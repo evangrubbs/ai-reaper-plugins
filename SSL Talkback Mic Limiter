@@ -1,0 +1,512 @@
+desc: SSL 4000 Listen Mic Compressor (Talk Back)
+author: AI Collaborator
+version: 3.3
+
+slider1:18<0,30,0.1>-Drive / Input Gain (dB)
+slider2:1<0,1,1{Out,In}>-Compressor In
+slider3:1<0,1,1{Off,On}>-2x Oversampling
+slider4:0<-20,20,0.1>-Makeup Output (dB)
+
+in_pin:left
+in_pin:right
+out_pin:left
+out_pin:right
+
+@init
+ext_noinit=1;
+
+// Constants for SSL LMC Math
+ln10_20 = log(10) / 20;
+ratio = 1000.0;      // Fixed Infinity:1 emulation
+threshold = -18.0;   // Fixed internal hard-knee circuit threshold
+att_time = 0.0001;   // Fixed 100-microsecond attack
+dec_time = 0.100;    // Fixed 100-millisecond release
+
+env = -100;          // detector starts silent
+bg_w = 0;
+bg_h = 0;
+
+// ════════ 2x OVERSAMPLER: 31-tap Blackman halfband, polyphase ════════
+HB = 1000;       // 16 taps
+HIST = 1100;     // 6 circular buffers x 16 samples
+XL = 1100; XR = 1116; P0L = 1132; P0R = 1148; P1L = 1164; P1R = 1180;
+wp = 0;
+os_prev = -1;
+
+function init_halfband() local(j, k, c, s) (
+  s = 0; j = 0;
+  loop(16,
+    k = abs(2*j - 15);                                   // 15,13,...,1,1,...,15
+    c = (sin($pi*k/2) / ($pi*k)) * (0.42 + 0.5*cos($pi*k/16) + 0.08*cos(2*$pi*k/16));
+    HB[j] = c; s += c;
+    j += 1;
+  );
+  j = 0;
+  loop(16, HB[j] *= 0.5/s; j += 1; );                    // unity DC gain
+);
+init_halfband();
+
+function hb_dot(buf, p) local(i, s) (
+  s = 0; i = 0;
+  loop(16, s += HB[i] * buf[(p - i) & 15]; i += 1; );
+  s;
+);
+
+// One step of the SSL LMC detector + gain cell. Result in cl / cr.
+function comp_step(l, r) local(rect, r_db, gr, g) (
+  rect = max(abs(l), abs(r));
+  r_db = rect > 0.00001 ? 20.0 * log10(rect) : -100.0;
+  r_db > env ? ( env = att_coef * env + (1.0 - att_coef) * r_db; )
+             : ( env = dec_coef * env + (1.0 - dec_coef) * r_db; );
+  gr = 0.0;
+  slider2 == 1 ? ( env > threshold ? ( gr = (threshold - env) * (1.0 - (1.0 / ratio)); ); );
+  g = exp(gr * ln10_20);
+  cl = l * g;
+  cr = r * g;
+);
+
+// coefficients
+function recalc() local(os_now) (
+  in_gain = exp(slider1 * ln10_20);
+  out_gain = exp(slider4 * ln10_20);
+  os_now = (slider3 == 1) ? 1 : 0;
+  rate_scale = os_now ? 2 : 1;
+  att_coef = exp(-1.0 / (att_time * srate * rate_scale));
+  dec_coef = exp(-1.0 / (dec_time * srate * rate_scale));
+  os_now != os_prev ? ( memset(HIST, 0, 96); os_prev = os_now; );
+  pdc_delay = os_now ? 15 : 0;                              // halfband up + down = 15 samples
+  pdc_bot_ch = 0; pdc_top_ch = 2;
+);
+
+// ════════ GUI state ════════
+drag = 0;
+last_cap = 0;
+changed = 0;
+dirty = 0;
+last_click_id = 0;
+last_click_t = 0;
+colr = 0.5; colg = 0.5; colb = 0.5;
+gfx_ext_flags = 256;
+kdown = 2;   // pixels to push every knob down (raise it if a knob still touches its text)
+tipx = 0;
+tipy = 0;
+tipv = 0;
+
+// ---- knob ranges (real units) : index = slider number ----
+CMIN = 200; CMAX = 220; CSTP = 240; CDEF = 260; CLG = 280; defv = 300;
+function ctl_norm(id, v) local(mn, mx, n) (
+  mn = CMIN[id]; mx = CMAX[id];
+  n = CLG[id] ? log(v/mn)/log(mx/mn) : (v - mn)/(mx - mn);
+  max(0, min(1, n));
+);
+function ctl_val(id, n) local(mn, mx, st, v) (
+  mn = CMIN[id]; mx = CMAX[id]; st = CSTP[id]; n = max(0, min(1, n));
+  v = CLG[id] ? mn*exp(n*log(mx/mn)) : mn + n*(mx - mn);
+  v = mn + floor((v - mn)/st + 0.5)*st;
+  abs(v) < 0.00001 ? ( v = 0; );
+  max(mn, min(mx, v));
+);
+function def_ctl(id, lg, mn, mx, st, df) (
+  CLG[id]=lg; CMIN[id]=mn; CMAX[id]=mx; CSTP[id]=st; CDEF[id]=df;
+  defv[id] = ctl_norm(id, df);     // double-click reset position (0..1)
+);
+def_ctl(1, 0,   0, 30, 0.1, 18);   // Drive
+def_ctl(4, 0, -20, 20, 0.1,  0);   // Makeup output
+
+recalc();
+
+function setcol(r, g, b)
+(
+  colr = r; colg = g; colb = b;
+);
+
+function valstr(id, v)
+(
+  (id == 1) ? sprintf(#tip, "%.1f dB", v);
+  (id == 4) ? sprintf(#tip, "%+.1f dB", v);
+);
+
+function tipbox()
+  local(tw, th, bw3, bh3, bx3, by3)
+(
+  gfx_setfont(2);
+  gfx_measurestr(#tip, tw, th);
+  bw3 = tw + 12;
+  bh3 = th + 6;
+  bx3 = max(1, min(w - bw3 - 1, tipx - bw3/2));
+  by3 = tipy - kr - bh3 - 6;
+  (by3 < 1) ? by3 = tipy + kr + 6;     // flip below if no room above
+
+  gfx_set(0, 0, 0, 0.5);
+  gfx_rect(bx3 + 2, by3 + 2, bw3, bh3);     // shadow
+  gfx_set(0.07, 0.07, 0.07, 0.96);
+  gfx_rect(bx3, by3, bw3, bh3);             // body
+  gfx_set(0.6, 0.6, 0.6);
+  gfx_rect(bx3, by3, bw3, 1);               // border
+  gfx_rect(bx3, by3 + bh3 - 1, bw3, 1);
+  gfx_rect(bx3, by3, 1, bh3);
+  gfx_rect(bx3 + bw3 - 1, by3, 1, bh3);
+  gfx_a = 1;
+
+  gfx_set(1, 0.85, 0.3);                    // amber text
+  gfx_x = bx3 + 6;
+  gfx_y = by3 + 3;
+  gfx_drawstr(#tip);
+);
+
+// vertical grey gradient, built from 1px rows
+function vgrad(x, y, w2, h2, c0, c1)
+  local(i, n, c)
+(
+  n = max(1, floor(h2));
+  i = 0;
+  loop(n,
+    c = c0 + (c1 - c0)*(i/n);
+    gfx_set(c, c, c);
+    gfx_rect(x, y + i, w2, 1);
+    i += 1;
+  );
+);
+
+function knob(id, x, y, r, v)
+  local(a, dx, dy, now, i, t)
+(
+  dx = mouse_x - x;
+  dy = mouse_y - y;
+  now = time_precise();
+
+  ((mouse_cap & 1) && (last_cap == 0) && ((dx*dx + dy*dy) < (r*r*1.3))) ? (
+    ((last_click_id == id) && ((now - last_click_t) < 0.35)) ? (
+      // double-click: reset to this knob's default
+      v = defv[id];
+      changed = id;
+      drag = 0;
+      last_click_id = 0;
+    ) : (
+      drag = id;
+      dragy = mouse_y;
+      dragv = v;
+      last_click_id = id;
+      last_click_t = now;
+    );
+  );
+
+  ((drag == id) && (mouse_cap & 1)) ? (
+    v = max(0, min(1, dragv + (dragy - mouse_y) * 0.005));
+    changed = id;
+    tipx = x;
+    tipy = y;
+  );
+
+  // tick dots around the arc
+  gfx_set(0.78, 0.78, 0.78);
+  i = 0;
+  loop(11,
+    t = $pi*0.75 + i*$pi*0.15;
+    gfx_circle(x + cos(t)*r*1.3, y + sin(t)*r*1.3, max(1, r*0.06), 1, 1);
+    i += 1;
+  );
+
+  // drop shadow
+  gfx_set(0, 0, 0, 0.4);
+  gfx_circle(x + r*0.1, y + r*0.2, r + 2, 1, 1);
+  gfx_a = 1;
+
+  // skirt, metal rim, cap
+  gfx_set(0.04, 0.04, 0.04);
+  gfx_circle(x, y, r + 1.5, 1, 1);
+  gfx_set(0.55, 0.55, 0.55);
+  gfx_circle(x, y, r + 0.5, 1, 1);
+  gfx_set(colr*0.55, colg*0.55, colb*0.55);
+  gfx_circle(x, y, r - 0.5, 1, 1);
+  gfx_set(colr, colg, colb);
+  gfx_circle(x, y, r*0.88, 1, 1);
+
+  // soft light from top-left, shade at bottom-right
+  gfx_set(1, 1, 1, 0.16);
+  gfx_circle(x - r*0.18, y - r*0.24, r*0.55, 1, 1);
+  gfx_set(0, 0, 0, 0.16);
+  gfx_circle(x + r*0.22, y + r*0.28, r*0.5, 1, 1);
+  gfx_a = 1;
+
+  // pointer
+  a = $pi*0.75 + v*$pi*1.5;
+  gfx_set(1, 1, 1);
+  gfx_line(x + cos(a)*r*0.2, y + sin(a)*r*0.2, x + cos(a)*r*0.95, y + sin(a)*r*0.95);
+  gfx_line(x + cos(a)*r*0.2 + 1, y + sin(a)*r*0.2, x + cos(a)*r*0.95 + 1, y + sin(a)*r*0.95);
+  v;
+);
+
+function label(str, cx, ty)
+  local(tw, th)
+(
+  gfx_measurestr(str, tw, th);
+  gfx_x = cx - tw/2;
+  gfx_y = ty;
+  gfx_drawstr(str);
+);
+
+// matte metal panel, drawn once into image buffer 1
+function build_bg(bw, bh)
+  local(x, y, n, rn, base)
+(
+  gfx_setimgdim(1, bw, bh);
+  gfx_dest = 1;
+  y = 0;
+  loop(bh,
+    rn = sin(y*4.1414)*43758.5453;
+    rn = rn - floor(rn);
+    x = 0;
+    loop(bw,
+      n = sin(x*12.9898 + y*78.233)*43758.5453;
+      n = n - floor(n);
+      base = 0.20 - 0.04*(y/bh) + (n - 0.5)*0.045 + (rn - 0.5)*0.012;
+      gfx_x = x;
+      gfx_y = y;
+      gfx_setpixel(base, base, base);
+      x += 1;
+    );
+    y += 1;
+  );
+  // panel edge bevel
+  gfx_set(1, 1, 1, 0.14);
+  gfx_rect(0, 0, bw, 1);
+  gfx_rect(0, 0, 1, bh);
+  gfx_set(0, 0, 0, 0.5);
+  gfx_rect(0, bh - 1, bw, 1);
+  gfx_rect(bw - 1, 0, 1, bh);
+  gfx_a = 1;
+  gfx_dest = -1;
+);
+
+// section divider: engraved groove with a small raised name plate
+function tab(str, ty, th2)
+  local(tw, thh, bw2, bx)
+(
+  gfx_set(0, 0, 0, 0.55);
+  gfx_rect(m, ty + th2*0.5, w - 2*m, 1);
+  gfx_set(1, 1, 1, 0.12);
+  gfx_rect(m, ty + th2*0.5 + 1, w - 2*m, 1);
+  gfx_a = 1;
+
+  gfx_setfont(3);
+  gfx_measurestr(str, tw, thh);
+  bw2 = tw + 12;
+  bx = w/2 - bw2/2;
+
+  gfx_set(0, 0, 0, 0.5);
+  gfx_rect(bx, ty + 1, bw2 + 1, th2 + 1);
+  gfx_a = 1;
+  vgrad(bx, ty, bw2, th2, 0.93, 0.74);
+  gfx_set(1, 1, 1, 0.8);
+  gfx_rect(bx, ty, bw2, 1);
+  gfx_set(0, 0, 0, 0.35);
+  gfx_rect(bx, ty + th2 - 1, bw2, 1);
+  gfx_a = 1;
+
+  gfx_set(0.1, 0.1, 0.1);
+  gfx_x = w/2 - tw/2;
+  gfx_y = ty + (th2 - thh)/2;
+  gfx_drawstr(str);
+);
+
+// real-looking push button: raised when off, pressed in when on, LED beside it
+function pbtn(id, x, y, bw2, bh2, v, txt, lr, lg, lb)
+  local(tw, thh, lx2, ly2, lrad, oy, tx, ty)
+(
+  ((mouse_cap & 1) && (last_cap == 0) && (mouse_x >= x) && (mouse_x < x + bw2) && (mouse_y >= y) && (mouse_y < y + bh2)) ? (
+    v = 1 - v;
+    changed = id;
+  );
+
+  // recess and shadow
+  gfx_set(0, 0, 0, 0.5);
+  gfx_rect(x - 1, y - 1, bw2 + 3, bh2 + 3);
+  gfx_a = 1;
+  gfx_set(0.03, 0.03, 0.03);
+  gfx_rect(x - 1, y - 1, bw2 + 2, bh2 + 2);
+
+  // face
+  oy = (v > 0.5) ? 1 : 0;
+  (v > 0.5) ? vgrad(x, y + oy, bw2, bh2 - oy, 0.62, 0.78) : vgrad(x, y, bw2, bh2, 0.95, 0.66);
+
+  // bevel
+  (v > 0.5) ? (
+    gfx_set(0, 0, 0, 0.45);
+    gfx_rect(x, y + oy, bw2, 2);
+    gfx_a = 1;
+  ) : (
+    gfx_set(1, 1, 1, 0.8);
+    gfx_rect(x, y, bw2, 1);
+    gfx_rect(x, y, 1, bh2);
+    gfx_set(0, 0, 0, 0.4);
+    gfx_rect(x, y + bh2 - 1, bw2, 1);
+    gfx_rect(x + bw2 - 1, y, 1, bh2);
+    gfx_a = 1;
+  );
+
+  // engraved text
+  gfx_setfont(3);
+  gfx_measurestr(txt, tw, thh);
+  tx = x + (bw2 - tw)/2;
+  ty = y + (bh2 - thh)/2 + oy;
+  gfx_set(1, 1, 1, 0.55);
+  gfx_x = tx;
+  gfx_y = ty + 1;
+  gfx_drawstr(txt);
+  gfx_a = 1;
+  gfx_set(0.1, 0.1, 0.1);
+  gfx_x = tx;
+  gfx_y = ty;
+  gfx_drawstr(txt);
+
+  // LED in a metal bezel
+  lrad = bh2*0.22;
+  lx2 = x + bw2 + lrad*2.6;
+  ly2 = y + bh2/2;
+  gfx_set(0.02, 0.02, 0.02);
+  gfx_circle(lx2, ly2, lrad + 1.5, 1, 1);
+  gfx_set(0.45, 0.45, 0.45);
+  gfx_circle(lx2, ly2, lrad + 1, 0, 1);
+  (v > 0.5) ? (
+    gfx_set(lr, lg, lb, 0.16);
+    gfx_circle(lx2, ly2, lrad*2.4, 1, 1);
+    gfx_set(lr, lg, lb, 0.28);
+    gfx_circle(lx2, ly2, lrad*1.7, 1, 1);
+    gfx_a = 1;
+    gfx_set(lr, lg, lb);
+    gfx_circle(lx2, ly2, lrad, 1, 1);
+    gfx_set(1, 1, 1, 0.65);
+    gfx_circle(lx2 - lrad*0.3, ly2 - lrad*0.3, lrad*0.35, 1, 1);
+    gfx_a = 1;
+  ) : (
+    gfx_set(lr*0.18, lg*0.18, lb*0.18);
+    gfx_circle(lx2, ly2, lrad, 1, 1);
+    gfx_set(1, 1, 1, 0.15);
+    gfx_circle(lx2 - lrad*0.3, ly2 - lrad*0.3, lrad*0.35, 1, 1);
+    gfx_a = 1;
+  );
+  v;
+);
+
+// knob cell: takes and returns the REAL value; knob() works in 0..1 knob position
+function kcell(id, cx, yt, v, top, lo, hi)
+  local(cy, n)
+(
+  cy = yt + fs + 1 + kr*1.3 + kdown;
+  n = knob(id, cx, cy, kr, ctl_norm(id, v));
+  (changed == id) ? (
+    v = ctl_val(id, n);
+    (drag == id) ? tipv = v;
+  );
+  gfx_setfont(1);
+  gfx_set(0.82, 0.82, 0.82);
+  label(top, cx, yt);
+  label(lo, cx - kr*0.95, cy + kr*1.1);
+  label(hi, cx + kr*0.95, cy + kr*1.1);
+  v;
+);
+
+@slider
+recalc();
+
+@block
+dirty ? ( recalc(); dirty = 0; );
+
+@sample
+slider3 == 1 ? (
+  // ── 2x oversampled: interpolate -> compress at 2x -> decimate ──
+  wp = (wp + 1) & 15;
+  XL[wp] = spl0 * in_gain;
+  XR[wp] = spl1 * in_gain;
+
+  // phase 0 (on the original sample grid, through the halfband centre taps)
+  comp_step(2.0 * hb_dot(XL, wp), 2.0 * hb_dot(XR, wp));
+  P0L[wp] = cl;
+  P0R[wp] = cr;
+  outl = 0.5 * P1L[(wp - 8) & 15] + hb_dot(P0L, wp);
+  outr = 0.5 * P1R[(wp - 8) & 15] + hb_dot(P0R, wp);
+
+  // phase 1 (the interpolated in-between sample, delayed to line up)
+  comp_step(XL[(wp - 7) & 15], XR[(wp - 7) & 15]);
+  P1L[wp] = cl;
+  P1R[wp] = cr;
+
+  spl0 = outl * out_gain;
+  spl1 = outr * out_gain;
+) : (
+  comp_step(spl0 * in_gain, spl1 * in_gain);
+  spl0 = cl * out_gain;
+  spl1 = cr * out_gain;
+);
+
+@gfx 120 130
+gfx_clear = 0x262626;
+gfx_a = 1;
+gfx_ext_flags = 256;
+
+w = gfx_w;
+h = gfx_h;
+
+// rebuild the panel texture only when the strip size changes
+((w != bg_w) || (h != bg_h)) ? (
+  bg_w = w;
+  bg_h = h;
+  build_bg(w, h);
+);
+gfx_x = 0;
+gfx_y = 0;
+gfx_blit(1, 1, 0);
+
+m = max(3, w * 0.03);
+
+// 2 columns
+cw = (w - 2*m) / 2;
+cx1 = m + cw*0.5;
+cx2 = m + cw*1.5;
+
+kr = cw*0.32;
+fs = max(8, cw*0.19);
+gfx_setfont(1, "Arial", fs);
+gfx_setfont(2, "Arial", fs*1.05, 98);
+gfx_setfont(3, "Arial", fs*0.85, 98);
+
+// everything is packed from the top; extra window height is just blank panel
+th2 = fs*1.4;                          // plate / button height
+hk  = 2*fs + 2.4*kr + 3 + kdown;       // knob cell with top + bottom labels
+hh  = th2 + 4;                         // header row
+
+changed = 0;
+y = m;
+
+tab("TALK BACK", y, th2);
+y += hh;
+
+// Drive / Output
+setcol(0.72, 0.25, 0.22);
+slider1 = kcell(1, cx1, y, slider1, "DRIVE dB", "0", "30");
+setcol(0.22, 0.22, 0.22);
+slider4 = kcell(4, cx2, y, slider4, "OUT dB", "-20", "+20");
+y += hk;
+
+// IN under DRIVE, 2X under OUT (button + LED centred on each knob)
+cbw = cw*0.7;
+cbl = th2*0.22;
+cbt = cbw + cbl*3.6 + 1.5;             // button + LED footprint
+slider2 = pbtn(2, cx1 - cbt/2, y, cbw, th2, slider2, "IN", 0.3, 1, 0.3);
+slider3 = pbtn(3, cx2 - cbt/2, y, cbw, th2, slider3, "2X", 0.3, 1, 0.3);
+
+// floating value readout while dragging (drawn last so it sits on top)
+((drag != 0) && (mouse_cap & 1)) ? (
+  valstr(drag, tipv);
+  tipbox();
+);
+
+(changed > 0) ? ( dirty = 1; );
+(changed == 1) ? slider_automate(slider1);
+(changed == 2) ? slider_automate(slider2);
+(changed == 3) ? ( sliderchange(slider3); slider_automate(slider3); );
+(changed == 4) ? slider_automate(slider4);
+
+last_cap = mouse_cap & 1;
+(last_cap == 0) ? (drag = 0);
