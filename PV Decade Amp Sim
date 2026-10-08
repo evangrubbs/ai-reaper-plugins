@@ -1,4 +1,4 @@
-desc:Peavey Decade - Circuit Model
+desc:PV Decade - Circuit Model
 
 slider1:0<0,2,1{Normal,Hot,Saturated}>Input Jack
 slider2:0<-12,24,0.1>Input Trim (dB)
