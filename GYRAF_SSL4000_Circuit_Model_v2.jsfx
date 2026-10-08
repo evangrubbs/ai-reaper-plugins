@@ -1,0 +1,2170 @@
+desc:SSL 4000 Circuit Model - Compact GUI
+author:OpenAI
+version:4.0
+
+slider1:0.7<0,1,0.001>Threshold
+slider2:0<0,1,0.001>Make-up
+slider3:0.8<0,1,0.2>Attack
+slider4:1<0,1,0.25>Release
+slider5:0.6<0,1,0.2>Ratio
+slider6:1<0,1,0.001>Mix
+
+in_pin:Left
+in_pin:Right
+out_pin:Left
+out_pin:Right
+
+
+@init
+
+tiny = 0.000000000001;
+pi = $pi;
+
+
+/* --------------------------------------------------------------------------
+   DSP STATE
+   -------------------------------------------------------------------------- */
+
+env_link = 0;
+env_release = 0;
+
+gr_db = 0;
+meter_gr = 0;
+gr_display = 0;
+
+last_sr = 0;
+
+atk_c = 0;
+rel_c = 0;
+
+in_dc_l = 0;
+in_dc_r = 0;
+
+out_dc_l = 0;
+out_dc_r = 0;
+
+sc_dc = 0;
+
+rect_state = 0;
+
+
+/* --------------------------------------------------------------------------
+   ATTACK RESISTORS FROM SCHEMATIC
+
+   820R / 2K7 / 8K2 / 27K / 82K / 270K
+
+   The source schematic identifies these resistor positions. The displayed
+   attack times are retained as the front-panel values. The resistor network
+   is represented explicitly here so the attack model is tied to the actual
+   switch positions rather than treating the positions as unrelated digital
+   presets.
+   -------------------------------------------------------------------------- */
+
+att_R = 200;
+
+att_R[0] = 820;
+att_R[1] = 2700;
+att_R[2] = 8200;
+att_R[3] = 27000;
+att_R[4] = 82000;
+att_R[5] = 270000;
+
+
+/*
+   The exact capacitor value cannot be established with sufficient confidence
+   from the supplied source alone, so the attack time constants are calibrated
+   to the six stated front-panel positions rather than pretending to know an
+   exact physical capacitor value.
+*/
+
+att_time = 220;
+
+att_time[0] = 0.0001;
+att_time[1] = 0.0003;
+att_time[2] = 0.001;
+att_time[3] = 0.003;
+att_time[4] = 0.010;
+att_time[5] = 0.030;
+
+
+/* --------------------------------------------------------------------------
+   RELEASE NETWORK
+
+   Fixed positions:
+   0.1 / 0.3 / 0.6 / 1.2 / 3 seconds
+
+   AUTO is handled separately using a multi-path control-voltage model.
+   -------------------------------------------------------------------------- */
+
+rel_time = 240;
+
+rel_time[0] = 0.10;
+rel_time[1] = 0.30;
+rel_time[2] = 0.60;
+rel_time[3] = 1.20;
+rel_time[4] = 3.00;
+
+
+/* --------------------------------------------------------------------------
+   RATIO POSITIONS
+   -------------------------------------------------------------------------- */
+
+rat_tab = 250;
+
+rat_tab[0] = 1.5;
+rat_tab[1] = 2.0;
+rat_tab[2] = 3.0;
+rat_tab[3] = 4.0;
+rat_tab[4] = 5.0;
+rat_tab[5] = 10.0;
+
+
+/* --------------------------------------------------------------------------
+   GUI STATE
+   -------------------------------------------------------------------------- */
+
+drag = 0;
+dragy = 0;
+dragv = 0;
+
+last_cap = 0;
+
+changed = 0;
+
+last_click_id = 0;
+last_click_t = 0;
+
+colr = 0.5;
+colg = 0.5;
+colb = 0.5;
+
+lx = 0;
+ly = 0;
+
+bg_w = 0;
+bg_h = 0;
+
+gfx_ext_flags = 256;
+
+
+/* Default values for double-click reset */
+
+defv = 100;
+
+defv[1] = 0.7;
+defv[2] = 0;
+defv[3] = 0.8;
+defv[4] = 1;
+defv[5] = 0.6;
+defv[6] = 1;
+
+
+/* --------------------------------------------------------------------------
+   FUNCTIONS
+   -------------------------------------------------------------------------- */
+
+function db2lin(db)
+(
+  10^(db/20);
+);
+
+
+function lin2db(x)
+(
+  20*log(max(abs(x),tiny))/log(10);
+);
+
+
+function clamp(x,lo,hi)
+(
+  max(lo,min(hi,x));
+);
+
+
+/* --------------------------------------------------------------------------
+   COEFFICIENT UPDATE
+   -------------------------------------------------------------------------- */
+
+function update_coeffs()
+  local(
+    sr,
+    aidx,
+    ridx,
+    rati,
+    fc,
+    ac_rc
+  )
+(
+  sr = srate;
+
+
+  /*
+     Attack selector.
+
+     The resistor positions are retained explicitly. The calibrated time
+     constants correspond to the six labeled attack settings.
+  */
+
+  aidx = floor(slider3*5+0.5);
+
+  attack_ms =
+    att_time[aidx]*1000;
+
+
+  /*
+     Fixed release selector.
+  */
+
+  ridx = floor(slider4*4+0.5);
+
+  release_s =
+    rel_time[ridx];
+
+
+  /*
+     Attack capacitor/control-voltage coefficient.
+  */
+
+  atk_c =
+    exp(
+      -1 /
+      (
+        max(
+          att_time[aidx],
+          0.00001
+        ) * sr
+      )
+    );
+
+
+  /*
+     Fixed release coefficient.
+  */
+
+  rel_c =
+    exp(
+      -1 /
+      (
+        max(
+          release_s,
+          0.001
+        ) * sr
+      )
+    );
+
+
+  /*
+     Extremely low-frequency audio coupling.
+
+     This represents the series coupling capacitors and surrounding input/
+     output resistance without unnecessarily removing audible low end.
+  */
+
+  fc = 5;
+
+  ac_rc =
+    exp(
+      -2*pi*fc/sr
+    );
+
+
+  ac_a = ac_rc;
+
+
+  /*
+     Sidechain coupling / DC rejection.
+
+     This is separate from the optional detector high-pass behavior. The
+     supplied schematic-derived topology contains AC-coupled op-amp stages,
+     so the detector should not respond indefinitely to DC.
+  */
+
+  fc = 5;
+
+  sc_dc_a =
+    exp(
+      -2*pi*fc/sr
+    );
+
+
+  /*
+     Very small rectifier/control-path smoothing.
+
+     This is intentionally high-frequency compared with the attack network.
+     It prevents the digital precision rectifier from being infinitely fast
+     around zero crossings while leaving the selected attack times dominant.
+  */
+
+  fc = 18000;
+
+  rect_a =
+    exp(
+      -2*pi*fc/sr
+    );
+
+
+  last_sr = sr;
+);
+
+
+/* --------------------------------------------------------------------------
+   KNOB DRAWING
+   -------------------------------------------------------------------------- */
+
+function setcol(r,g,b)
+(
+  colr = r;
+  colg = g;
+  colb = b;
+);
+
+
+function vgrad(x,y,w2,h2,c0,c1)
+  local(i,n,c)
+(
+  n = max(1,floor(h2));
+
+  i = 0;
+
+  loop(n,
+
+    c =
+      c0 +
+      (c1-c0)*(i/n);
+
+    gfx_set(c,c,c);
+
+    gfx_rect(
+      x,
+      y+i,
+      w2,
+      1
+    );
+
+    i += 1;
+  );
+);
+
+
+function knob(id,x,y,r,v,steps)
+  local(
+    a,
+    dx,
+    dy,
+    now,
+    i,
+    t,
+    sens,
+    n
+  )
+(
+  dx = mouse_x-x;
+  dy = mouse_y-y;
+
+  now = time_precise();
+
+
+  /*
+     Larger hit area than the visible knob.
+
+     This does not alter the appearance. It simply makes the control easier
+     to grab, especially around the tick marks.
+  */
+
+  ((mouse_cap & 1) &&
+   !(last_cap & 1) &&
+   ((dx*dx + dy*dy) <
+    (r*1.55)*(r*1.55))) ?
+
+  (
+    (
+      (last_click_id == id) &&
+      ((now-last_click_t) < 0.35)
+    ) ?
+
+    (
+      v = defv[id];
+
+      changed = id;
+
+      drag = 0;
+
+      last_click_id = 0;
+    )
+
+    :
+
+    (
+      drag = id;
+
+      dragy = mouse_y;
+
+      dragv = v;
+
+      last_click_id = id;
+
+      last_click_t = now;
+    );
+  );
+
+
+  /*
+     Continuous drag.
+  */
+
+  sens =
+    (steps > 0)
+    ? 0.01
+    : 0.005;
+
+
+  ((drag == id) &&
+   (mouse_cap & 1)) ?
+
+  (
+    v =
+      max(
+        0,
+        min(
+          1,
+          dragv +
+          (dragy-mouse_y)*sens
+        )
+      );
+
+
+    (steps > 0) ?
+
+    (
+      v =
+        floor(
+          v*(steps-1)+0.5
+        ) /
+        (steps-1);
+    );
+
+
+    changed = id;
+  );
+
+
+  /*
+     Tick marks.
+  */
+
+  n =
+    (steps > 0)
+    ? steps
+    : 11;
+
+  gfx_set(
+    0.88,
+    0.88,
+    0.88
+  );
+
+  i = 0;
+
+  loop(n,
+
+    t =
+      $pi*0.75 +
+      (i/(n-1))*$pi*1.5;
+
+    gfx_circle(
+      x+cos(t)*r*1.3,
+      y+sin(t)*r*1.3,
+      max(1,r*0.07),
+      1,
+      1
+    );
+
+    i += 1;
+  );
+
+
+  /*
+     Shadow.
+  */
+
+  gfx_set(
+    0,
+    0,
+    0,
+    0.4
+  );
+
+  gfx_circle(
+    x+r*0.1,
+    y+r*0.2,
+    r+2,
+    1,
+    1
+  );
+
+  gfx_a = 1;
+
+
+  /*
+     Outer shell.
+  */
+
+  gfx_set(
+    0.04,
+    0.04,
+    0.04
+  );
+
+  gfx_circle(
+    x,
+    y,
+    r+1.5,
+    1,
+    1
+  );
+
+
+  gfx_set(
+    0.55,
+    0.55,
+    0.55
+  );
+
+  gfx_circle(
+    x,
+    y,
+    r+0.5,
+    1,
+    1
+  );
+
+
+  gfx_set(
+    colr*0.55,
+    colg*0.55,
+    colb*0.55
+  );
+
+  gfx_circle(
+    x,
+    y,
+    r-0.5,
+    1,
+    1
+  );
+
+
+  gfx_set(
+    colr,
+    colg,
+    colb
+  );
+
+  gfx_circle(
+    x,
+    y,
+    r*0.88,
+    1,
+    1
+  );
+
+
+  /*
+     Highlight.
+  */
+
+  gfx_set(
+    1,
+    1,
+    1,
+    0.16
+  );
+
+  gfx_circle(
+    x-r*0.18,
+    y-r*0.24,
+    r*0.55,
+    1,
+    1
+  );
+
+
+  gfx_set(
+    0,
+    0,
+    0,
+    0.16
+  );
+
+  gfx_circle(
+    x+r*0.22,
+    y+r*0.28,
+    r*0.5,
+    1,
+    1
+  );
+
+  gfx_a = 1;
+
+
+  /*
+     Pointer.
+  */
+
+  a =
+    $pi*0.75 +
+    v*$pi*1.5;
+
+  gfx_set(
+    1,
+    1,
+    1
+  );
+
+  gfx_line(
+    x+cos(a)*r*0.2,
+    y+sin(a)*r*0.2,
+    x+cos(a)*r*0.95,
+    y+sin(a)*r*0.95
+  );
+
+  gfx_line(
+    x+cos(a)*r*0.2+1,
+    y+sin(a)*r*0.2,
+    x+cos(a)*r*0.95+1,
+    y+sin(a)*r*0.95
+  );
+
+
+  v;
+);
+
+
+/* --------------------------------------------------------------------------
+   LABELS
+   -------------------------------------------------------------------------- */
+
+function label(str,cx,ty)
+  local(
+    tw,
+    th,
+    sr,
+    sg,
+    sb
+  )
+(
+  sr = gfx_r;
+  sg = gfx_g;
+  sb = gfx_b;
+
+  gfx_measurestr(
+    str,
+    tw,
+    th
+  );
+
+
+  gfx_set(
+    0,
+    0,
+    0,
+    0.9
+  );
+
+  gfx_x =
+    cx-tw/2+1;
+
+  gfx_y =
+    ty+1;
+
+  gfx_drawstr(str);
+
+
+  gfx_set(
+    sr,
+    sg,
+    sb
+  );
+
+  gfx_x =
+    cx-tw/2;
+
+  gfx_y =
+    ty;
+
+  gfx_drawstr(str);
+);
+
+
+function tlab(str,frac)
+  local(t)
+(
+  t =
+    $pi*0.75 +
+    frac*$pi*1.5;
+
+  gfx_setfont(
+    1
+  );
+
+  gfx_set(
+    0.96,
+    0.96,
+    0.96
+  );
+
+  label(
+    str,
+    lx+cos(t)*kr*1.7,
+    ly+sin(t)*kr*1.7-fs*0.5
+  );
+);
+
+
+function ccell(id,cx,yt,v,steps,top,name)
+  local(cy)
+(
+  cy =
+    yt+rowh*0.45;
+
+  lx = cx;
+  ly = cy;
+
+  v =
+    knob(
+      id,
+      cx,
+      cy,
+      kr,
+      v,
+      steps
+    );
+
+
+  gfx_setfont(
+    1
+  );
+
+  gfx_set(
+    0.92,
+    0.92,
+    0.92
+  );
+
+  label(
+    top,
+    cx,
+    cy-kr*1.3-fs*1.6
+  );
+
+
+  gfx_setfont(
+    2
+  );
+
+  gfx_set(
+    1,
+    1,
+    1
+  );
+
+  label(
+    name,
+    cx,
+    cy+kr*1.2+fs*0.9
+  );
+
+
+  v;
+);
+
+
+/* --------------------------------------------------------------------------
+   METALLIC BACKGROUND
+   -------------------------------------------------------------------------- */
+
+function build_bg(bw,bh)
+  local(
+    x,
+    y,
+    n,
+    rn,
+    base
+  )
+(
+  gfx_setimgdim(
+    1,
+    bw,
+    bh
+  );
+
+  gfx_dest = 1;
+
+  y = 0;
+
+  loop(bh,
+
+    rn =
+      sin(y*4.1414)*43758.5453;
+
+    rn =
+      rn-floor(rn);
+
+    x = 0;
+
+    loop(bw,
+
+      n =
+        sin(
+          x*12.9898 +
+          y*78.233
+        ) *
+        43758.5453;
+
+      n =
+        n-floor(n);
+
+
+      base =
+        0.20
+        -0.04*(y/bh)
+        +(n-0.5)*0.045
+        +(rn-0.5)*0.012;
+
+
+      gfx_x = x;
+      gfx_y = y;
+
+      gfx_setpixel(
+        base,
+        base,
+        base
+      );
+
+      x += 1;
+    );
+
+    y += 1;
+  );
+
+
+  gfx_set(
+    1,
+    1,
+    1,
+    0.14
+  );
+
+  gfx_rect(
+    0,
+    0,
+    bw,
+    1
+  );
+
+  gfx_rect(
+    0,
+    0,
+    1,
+    bh
+  );
+
+
+  gfx_set(
+    0,
+    0,
+    0,
+    0.5
+  );
+
+  gfx_rect(
+    0,
+    bh-1,
+    bw,
+    1
+  );
+
+  gfx_rect(
+    bw-1,
+    0,
+    1,
+    bh
+  );
+
+  gfx_a = 1;
+
+  gfx_dest = -1;
+);
+
+
+/* --------------------------------------------------------------------------
+   METER TICK
+   -------------------------------------------------------------------------- */
+
+function mtick(v,str)
+  local(
+    a,
+    ca,
+    sa
+  )
+(
+  a =
+    $pi*1.15 +
+    (v/20)*$pi*0.7;
+
+  ca = cos(a);
+  sa = sin(a);
+
+
+  gfx_set(
+    0.95,
+    0.95,
+    0.95
+  );
+
+
+  gfx_line(
+    px+ca*L*0.86,
+    py+sa*L*0.86,
+    px+ca*L*0.97,
+    py+sa*L*0.97
+  );
+
+
+  label(
+    str,
+    px+ca*L*0.70,
+    py+sa*L*0.70-fm*0.5
+  );
+);
+
+
+/* --------------------------------------------------------------------------
+   SLIDER
+   -------------------------------------------------------------------------- */
+
+@slider
+
+threshold_db =
+  -15 +
+  slider1*30;
+
+makeup_db =
+  slider2*15;
+
+
+att_index =
+  floor(slider3*5+0.5);
+
+attack_s =
+  att_time[att_index];
+
+
+rel_index =
+  floor(slider4*4+0.5);
+
+release_s =
+  rel_time[rel_index];
+
+
+rat_index =
+  floor(slider5*5+0.5);
+
+ratio =
+  rat_tab[rat_index];
+
+
+slope =
+  1-1/ratio;
+
+update_coeffs();
+
+
+/* --------------------------------------------------------------------------
+   BLOCK
+   -------------------------------------------------------------------------- */
+
+@block
+
+threshold_db =
+  -15 +
+  slider1*30;
+
+makeup_db =
+  slider2*15;
+
+
+att_index =
+  floor(slider3*5+0.5);
+
+attack_s =
+  att_time[att_index];
+
+
+rel_index =
+  floor(slider4*4+0.5);
+
+release_s =
+  rel_time[rel_index];
+
+
+rat_index =
+  floor(slider5*5+0.5);
+
+ratio =
+  rat_tab[rat_index];
+
+
+slope =
+  1-1/ratio;
+
+
+(last_sr != srate) ?
+(
+  update_coeffs();
+);
+
+
+/* --------------------------------------------------------------------------
+   SAMPLE
+   -------------------------------------------------------------------------- */
+
+@sample
+
+
+/* ==========================================================================
+   INPUT / AUDIO PATH
+   ========================================================================== */
+
+inL = spl0;
+inR = spl1;
+
+
+/*
+   Input coupling.
+
+   The previous compact version accidentally reduced its "HPF" equation to
+   a gain multiplication. This is the actual one-pole coupling structure:
+
+       lowpass(input) -> subtract from input -> AC signal
+*/
+
+in_dc_l =
+  ac_a*in_dc_l +
+  (1-ac_a)*inL;
+
+in_dc_r =
+  ac_a*in_dc_r +
+  (1-ac_a)*inR;
+
+
+audioL =
+  inL-in_dc_l;
+
+audioR =
+  inR-in_dc_r;
+
+
+/* ==========================================================================
+   SIDECHAIN SOURCE
+   ========================================================================== */
+
+
+/*
+   The compact GUI intentionally has no external sidechain control.
+
+   Therefore the detector is fed from the processed input path, as in the
+   normal internal sidechain configuration.
+*/
+
+scSrcL = audioL;
+scSrcR = audioR;
+
+
+/* ==========================================================================
+   SIDECHAIN SUMMING NETWORK
+   ========================================================================== */
+
+
+/*
+   The source topology sums the two channels through equal resistive paths.
+
+   We retain the actual instantaneous analog-style sum before rectification.
+
+   The 0.5 scaling represents the equal-resistor summing normalization and
+   prevents the linked detector from receiving an artificial +6 dB simply
+   because two channels are present.
+*/
+
+scMono =
+  0.5 *
+  (
+    scSrcL +
+    scSrcR
+  );
+
+
+/*
+   Sidechain coupling/DC rejection.
+
+   This is deliberately separate from the envelope attack/release network.
+*/
+
+sc_dc =
+  sc_dc_a*sc_dc +
+  (1-sc_dc_a)*scMono;
+
+
+det_ac =
+  scMono-sc_dc;
+
+
+/* ==========================================================================
+   SIDECHAIN THAT2181 VCA
+   ========================================================================== */
+
+
+/*
+   The sidechain VCA is controlled by the same gain-reduction control voltage
+   that controls the main VCAs.
+
+   Because gr_db is negative during compression:
+
+       gr_db = -6 dB
+       sidechain gain = 0.501...
+
+   This preserves the feedback-assisted detector topology.
+*/
+
+sc_vca_gain =
+  db2lin(gr_db);
+
+
+/*
+   Sidechain VCA output.
+*/
+
+sc_vca_out =
+  det_ac *
+  sc_vca_gain;
+
+
+/* ==========================================================================
+   PRECISION RECTIFIER
+   ========================================================================== */
+
+
+/*
+   The hardware uses a precision full-wave rectifier.
+
+   A mathematical abs() is the correct first-order representation of its
+   transfer characteristic because the diode threshold is cancelled by the
+   op-amp feedback.
+
+   A very small high-frequency state is added to avoid an infinitely sharp
+   digital zero-crossing while remaining far above the audible/control-band
+   dynamics.
+*/
+
+rect_raw =
+  abs(sc_vca_out);
+
+
+rect_state =
+  rect_a*rect_state +
+  (1-rect_a)*rect_raw;
+
+
+rect =
+  rect_state;
+
+
+/* ==========================================================================
+   ATTACK / RELEASE CONTROL-VOLTAGE NETWORK
+   ========================================================================== */
+
+
+/*
+   Attack.
+
+   The actual hardware charges the timing capacitor through the selected
+   attack resistance. The six resistor positions are represented by the
+   attack table above and calibrated to the labeled attack constants.
+*/
+
+rect > env_link ?
+(
+  env_link =
+    atk_c*env_link +
+    (1-atk_c)*rect;
+)
+
+:
+
+(
+  /*
+     RELEASE
+  */
+
+  slider4 >= 0.999 ?
+
+  (
+    /*
+       AUTO RELEASE
+
+       The source identifies a dedicated large capacitor path in the Auto
+       position. Rather than replacing this with one arbitrary release time,
+       use two recovery paths:
+
+       1. a relatively quick path for short events
+       2. a slower path whose contribution increases with stored control
+          voltage / gain reduction.
+
+       This is a behavioral representation of the multi-path RC behavior,
+       not a claim that these are the literal unknown component values.
+    */
+
+
+    /*
+       Fast recovery component.
+    */
+
+    auto_fast_t =
+      0.10 +
+      min(
+        abs(gr_db)*0.025,
+        0.45
+      );
+
+
+    auto_fast_c =
+      exp(
+        -1 /
+        (
+          auto_fast_t*srate
+        )
+      );
+
+
+    /*
+       Slow capacitor component.
+
+       Sustained gain reduction gives the slow path more influence.
+    */
+
+    auto_slow_t =
+      0.60 +
+      min(
+        abs(gr_db)*0.16,
+        2.40
+      );
+
+
+    auto_slow_c =
+      exp(
+        -1 /
+        (
+          auto_slow_t*srate
+        )
+      );
+
+
+    /*
+       Amount of slow-path contribution.
+
+       At low GR the recovery is dominated by the quicker branch.
+       At higher GR the large-capacitor branch becomes increasingly
+       significant.
+    */
+
+    slow_mix =
+      clamp(
+        abs(gr_db)/12,
+        0,
+        1
+      );
+
+
+    fast_release =
+      auto_fast_c*env_link +
+      (1-auto_fast_c)*rect;
+
+
+    slow_release =
+      auto_slow_c*env_link +
+      (1-auto_slow_c)*rect;
+
+
+    env_link =
+      fast_release*(1-slow_mix*0.65) +
+      slow_release*(slow_mix*0.65);
+  )
+
+  :
+
+  (
+    /*
+       Fixed release.
+    */
+
+    env_link =
+      rel_c*env_link +
+      (1-rel_c)*rect;
+  );
+);
+
+
+/* ==========================================================================
+   DETECTOR LEVEL
+   ========================================================================== */
+
+det_db =
+  lin2db(env_link);
+
+
+/* ==========================================================================
+   THRESHOLD / RATIO NETWORK
+   ========================================================================== */
+
+
+/*
+   Feedback-assisted compressor equation.
+
+   The detector already contains the current sidechain-VCA attenuation, so
+   the ratio calculation is applied to the residual detector level rather
+   than to the raw input alone.
+*/
+
+over =
+  det_db -
+  threshold_db;
+
+
+over > 0 ?
+
+(
+  target_gr =
+    -slope *
+    over;
+)
+
+:
+
+(
+  target_gr = 0;
+);
+
+
+/*
+   Reasonable control range.
+
+   This prevents numerical runaway while allowing substantially more
+   compression than the normal operating range of the bus compressor.
+*/
+
+target_gr =
+  max(
+    target_gr,
+    -40
+  );
+
+
+/* ==========================================================================
+   CONTROL-VOLTAGE RESPONSE
+   ========================================================================== */
+
+
+/*
+   The detector capacitor determines the main attack/release behavior.
+
+   A second control-voltage stage is intentionally not given a separate
+   arbitrary "compressor envelope" anymore. This prevents accidentally
+   doubling the selected attack/release time, which the previous compact
+   implementation could do.
+*/
+
+target_gr < gr_db ?
+
+(
+  /*
+     More negative = more compression.
+     Attack is controlled by the selected detector RC.
+  */
+
+  gr_db =
+    atk_c*gr_db +
+    (1-atk_c)*target_gr;
+)
+
+:
+
+(
+  /*
+     Recovery.
+  */
+
+  slider4 >= 0.999 ?
+
+  (
+    /*
+       Auto recovery follows the same program-dependent time behavior as
+       the detector control voltage.
+    */
+
+    auto_gr_fast_t =
+      0.12 +
+      min(
+        abs(gr_db)*0.025,
+        0.45
+      );
+
+
+    auto_gr_slow_t =
+      0.70 +
+      min(
+        abs(gr_db)*0.15,
+        2.50
+      );
+
+
+    auto_gr_mix =
+      clamp(
+        abs(gr_db)/12,
+        0,
+        1
+      );
+
+
+    auto_gr_fast_c =
+      exp(
+        -1 /
+        (
+          auto_gr_fast_t*srate
+        )
+      );
+
+
+    auto_gr_slow_c =
+      exp(
+        -1 /
+        (
+          auto_gr_slow_t*srate
+        )
+      );
+
+
+    fast_gr =
+      auto_gr_fast_c*gr_db +
+      (1-auto_gr_fast_c)*target_gr;
+
+
+    slow_gr =
+      auto_gr_slow_c*gr_db +
+      (1-auto_gr_slow_c)*target_gr;
+
+
+    gr_db =
+      fast_gr*(1-auto_gr_mix*0.65) +
+      slow_gr*(auto_gr_mix*0.65);
+  )
+
+  :
+
+  (
+    gr_db =
+      rel_c*gr_db +
+      (1-rel_c)*target_gr;
+  );
+);
+
+
+/* ==========================================================================
+   MAIN THAT2181 VCAs
+   ========================================================================== */
+
+
+/*
+   Main VCA gain.
+
+   The THAT2181 is treated as an exponential voltage-controlled attenuator,
+   which is the appropriate macroscopic DSP abstraction for this model.
+*/
+
+vca_gain =
+  db2lin(
+    gr_db +
+    makeup_db
+  );
+
+
+wetL =
+  audioL *
+  vca_gain;
+
+wetR =
+  audioR *
+  vca_gain;
+
+
+/* ==========================================================================
+   DRY / WET
+   ========================================================================== */
+
+mix =
+  clamp(
+    slider6,
+    0,
+    1
+  );
+
+
+spl0 =
+  audioL*(1-mix) +
+  wetL*mix;
+
+spl1 =
+  audioR*(1-mix) +
+  wetR*mix;
+
+
+/* ==========================================================================
+   OUTPUT COUPLING
+   ========================================================================== */
+
+
+/*
+   Output coupling stage.
+
+   Again, this is a real coupling filter rather than the accidental
+   multiplication used by the earlier compact version.
+*/
+
+out_dc_l =
+  ac_a*out_dc_l +
+  (1-ac_a)*spl0;
+
+out_dc_r =
+  ac_a*out_dc_r +
+  (1-ac_a)*spl1;
+
+
+spl0 =
+  spl0-out_dc_l;
+
+spl1 =
+  spl1-out_dc_r;
+
+
+/* ==========================================================================
+   GAIN-REDUCTION METER
+   ========================================================================== */
+
+
+/*
+   Meter follows actual compression rather than makeup gain.
+*/
+
+meter_gr =
+  0.94*meter_gr +
+  0.06*(-gr_db);
+
+
+gr =
+  max(
+    0,
+    min(
+      20,
+      meter_gr
+    )
+  );
+
+
+/* ==========================================================================
+   GUI
+   ========================================================================== */
+
+@gfx 120 240
+
+gfx_clear = 0x262626;
+
+gfx_a = 1;
+
+gfx_ext_flags = 256;
+
+w = gfx_w;
+h = gfx_h;
+
+
+/* --------------------------------------------------------------------------
+   BACKGROUND
+   -------------------------------------------------------------------------- */
+
+((w != bg_w) || (h != bg_h)) ?
+
+(
+  bg_w = w;
+  bg_h = h;
+
+  build_bg(
+    w,
+    h
+  );
+);
+
+
+gfx_x = 0;
+gfx_y = 0;
+
+gfx_blit(
+  1,
+  1,
+  0
+);
+
+
+/* --------------------------------------------------------------------------
+   LAYOUT
+   -------------------------------------------------------------------------- */
+
+m =
+  max(
+    3,
+    w*0.03
+  );
+
+
+cw =
+  (w-2*m)/2;
+
+
+cx1 =
+  m+cw*0.5;
+
+cx2 =
+  m+cw*1.5;
+
+
+u =
+  (h-2*m)/4.65;
+
+
+rowh =
+  u*1.3;
+
+
+mh =
+  u*0.62;
+
+
+y1 =
+  m+u*0.75;
+
+y2 =
+  y1+rowh;
+
+y3 =
+  y2+rowh;
+
+
+kr =
+  min(
+    cw*0.24,
+    rowh*0.2
+  );
+
+
+fs =
+  max(
+    9,
+    min(
+      cw*0.19,
+      rowh*0.115
+    )
+  );
+
+
+fm =
+  max(
+    8,
+    fs*0.85
+  );
+
+
+fnm =
+  max(
+    8,
+    fs*0.92
+  );
+
+
+gfx_setfont(
+  1,
+  "Arial",
+  fs
+);
+
+gfx_setfont(
+  2,
+  "Arial",
+  fnm,
+  98
+);
+
+gfx_setfont(
+  3,
+  "Arial",
+  fm
+);
+
+
+mw =
+  w-2*m;
+
+
+/* --------------------------------------------------------------------------
+   METER
+   -------------------------------------------------------------------------- */
+
+gfx_set(
+  0,
+  0,
+  0,
+  0.5
+);
+
+gfx_rect(
+  m-1,
+  m-1,
+  mw+3,
+  mh+3
+);
+
+gfx_a = 1;
+
+
+vgrad(
+  m,
+  m,
+  mw,
+  mh,
+  0.62,
+  0.30
+);
+
+
+gfx_set(
+  0.02,
+  0.02,
+  0.02
+);
+
+gfx_rect(
+  m+3,
+  m+3,
+  mw-6,
+  mh-6
+);
+
+
+gfx_set(
+  0.10,
+  0.10,
+  0.11
+);
+
+gfx_rect(
+  m+4,
+  m+4,
+  mw-8,
+  mh-8
+);
+
+
+gfx_set(
+  1,
+  1,
+  1,
+  0.05
+);
+
+gfx_rect(
+  m+4,
+  m+4,
+  mw-8,
+  (mh-8)*0.45
+);
+
+gfx_a = 1;
+
+
+/* --------------------------------------------------------------------------
+   ANALOG GR NEEDLE
+   -------------------------------------------------------------------------- */
+
+px =
+  w/2;
+
+py =
+  m+mh*0.86;
+
+
+L =
+  min(
+    mh*0.72,
+    mw*0.42
+  );
+
+
+dispv =
+  dispv*0.85 +
+  gr*0.15;
+
+
+gfx_setfont(
+  3
+);
+
+
+mtick(
+  0,
+  "0"
+);
+
+mtick(
+  4,
+  "4"
+);
+
+mtick(
+  8,
+  "8"
+);
+
+mtick(
+  12,
+  "12"
+);
+
+mtick(
+  16,
+  "16"
+);
+
+mtick(
+  20,
+  "20"
+);
+
+
+gfx_set(
+  0.95,
+  0.95,
+  0.95
+);
+
+
+label(
+  "dB",
+  px,
+  py-L*0.42
+);
+
+
+nv =
+  max(
+    0,
+    min(
+      20,
+      dispv
+    )
+  );
+
+
+na =
+  $pi*1.15 +
+  (nv/20)*$pi*0.7;
+
+
+gfx_set(
+  1,
+  1,
+  1
+);
+
+
+gfx_line(
+  px,
+  py,
+  px+cos(na)*L*0.95,
+  py+sin(na)*L*0.95
+);
+
+
+gfx_line(
+  px+1,
+  py,
+  px+1+cos(na)*L*0.95,
+  py+sin(na)*L*0.95
+);
+
+
+gfx_circle(
+  px,
+  py,
+  max(
+    2,
+    fs*0.25
+  ),
+  1,
+  1
+);
+
+
+/* --------------------------------------------------------------------------
+   KNOBS
+   -------------------------------------------------------------------------- */
+
+changed = 0;
+
+
+setcol(
+  0.26,
+  0.26,
+  0.28
+);
+
+
+/* THRESHOLD */
+
+slider1 =
+  ccell(
+    1,
+    cx1,
+    y1,
+    slider1,
+    0,
+    "dB",
+    "THRESHOLD"
+  );
+
+tlab(
+  "-15",
+  0
+);
+
+tlab(
+  "+15",
+  1
+);
+
+
+/* MAKE-UP */
+
+slider2 =
+  ccell(
+    2,
+    cx2,
+    y1,
+    slider2,
+    0,
+    "dB",
+    "MAKE-UP"
+  );
+
+tlab(
+  "0",
+  0
+);
+
+tlab(
+  "+15",
+  1
+);
+
+
+/* ATTACK */
+
+slider3 =
+  ccell(
+    3,
+    cx1,
+    y2,
+    slider3,
+    6,
+    " ",
+    "ATTACK ms"
+  );
+
+tlab(
+  ".1",
+  0
+);
+
+tlab(
+  ".3",
+  0.2
+);
+
+tlab(
+  "1",
+  0.4
+);
+
+tlab(
+  "3",
+  0.6
+);
+
+tlab(
+  "10",
+  0.8
+);
+
+tlab(
+  "30",
+  1
+);
+
+
+/* RELEASE */
+
+slider4 =
+  ccell(
+    4,
+    cx2,
+    y2,
+    slider4,
+    5,
+    " ",
+    "RELEASE S"
+  );
+
+tlab(
+  ".1",
+  0
+);
+
+tlab(
+  ".3",
+  0.25
+);
+
+tlab(
+  ".6",
+  0.5
+);
+
+tlab(
+  "1.2",
+  0.75
+);
+
+tlab(
+  "Auto",
+  1
+);
+
+
+/* RATIO */
+
+slider5 =
+  ccell(
+    5,
+    cx1,
+    y3,
+    slider5,
+    6,
+    " ",
+    "RATIO"
+  );
+
+tlab(
+  "1.5",
+  0
+);
+
+tlab(
+  "2",
+  0.2
+);
+
+tlab(
+  "3",
+  0.4
+);
+
+tlab(
+  "4",
+  0.6
+);
+
+tlab(
+  "5",
+  0.8
+);
+
+tlab(
+  "10",
+  1
+);
+
+
+/* MIX */
+
+slider6 =
+  ccell(
+    6,
+    cx2,
+    y3,
+    slider6,
+    0,
+    "%",
+    "MIX"
+  );
+
+tlab(
+  "DRY",
+  0
+);
+
+tlab(
+  "WET",
+  1
+);
+
+
+/* --------------------------------------------------------------------------
+   AUTOMATION
+   -------------------------------------------------------------------------- */
+
+(changed == 1) ?
+  slider_automate(slider1);
+
+(changed == 2) ?
+  slider_automate(slider2);
+
+(changed == 3) ?
+  slider_automate(slider3);
+
+(changed == 4) ?
+  slider_automate(slider4);
+
+(changed == 5) ?
+  slider_automate(slider5);
+
+(changed == 6) ?
+  slider_automate(slider6);
+
+
+/* --------------------------------------------------------------------------
+   MOUSE RELEASE
+   -------------------------------------------------------------------------- */
+
+last_cap =
+  mouse_cap & 1;
+
+
+(last_cap == 0) ?
+(
+  drag = 0;
+);

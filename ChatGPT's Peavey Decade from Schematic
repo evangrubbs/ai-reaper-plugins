@@ -1,0 +1,391 @@
+desc:Peavey Decade - Circuit Model
+
+slider1:0<0,2,1{Normal,Hot,Saturated}>Input Jack
+slider2:0<-12,24,0.1>Input Trim (dB)
+slider3:5<0,10,0.1>Volume
+slider4:5<0,10,0.1>Bass
+slider5:5<0,10,0.1>Mid
+slider6:5<0,10,0.1>Treble
+slider7:5<0,10,0.1>Master
+slider8:24<12,30,0.1>Supply Rail (V)
+slider9:1<0,20,0.1>Supply Source Resistance (ohm)
+slider10:4<2,16,0.1>Load Impedance (ohm)
+slider11:0<0,2,1{1x,2x,4x}>Oversampling
+slider12:0<-24,12,0.1>Output (dB)
+
+
+@init
+
+/* =========================================================
+   STATE
+   ========================================================= */
+
+/* Input DC blocker */
+in_x1 = 0;
+in_y1 = 0;
+
+/* Bass filter */
+bass_x1 = 0;
+bass_y1 = 0;
+
+/* Treble filter */
+treble_x1 = 0;
+treble_y1 = 0;
+
+/* Mid filter */
+mid_x1 = 0;
+mid_y1 = 0;
+
+/* Post-stage DC blocker */
+out_x1 = 0;
+out_y1 = 0;
+
+/* Power supply envelope */
+sag_env = 0;
+
+
+/* =========================================================
+   CONSTANTS
+   ========================================================= */
+
+PI = 3.141592653589793;
+TWO_PI = 6.283185307179586;
+
+
+/* =========================================================
+   INITIAL FILTER COEFFICIENTS
+   ========================================================= */
+
+/*
+   These are simple one-pole filters.
+
+   IMPORTANT:
+   Each filter has its own input and output state.
+*/
+
+fc = 25;
+a_in = exp(-TWO_PI * fc / srate);
+
+fc = 180;
+a_bass = exp(-TWO_PI * fc / srate);
+
+fc = 900;
+a_mid = exp(-TWO_PI * fc / srate);
+
+fc = 2800;
+a_treble = exp(-TWO_PI * fc / srate);
+
+fc = 15;
+a_out = exp(-TWO_PI * fc / srate);
+
+
+/* =========================================================
+   SLIDER INITIALIZATION
+   ========================================================= */
+
+@slider
+
+input_gain = 10 ^ (slider2 / 20);
+
+output_gain = 10 ^ (slider12 / 20);
+
+
+/* =========================================================
+   AUDIO
+   ========================================================= */
+
+@sample
+
+/* ---------------------------------------------------------
+   INPUT
+   --------------------------------------------------------- */
+
+in = (spl0 + spl1) * 0.5;
+
+
+/* ---------------------------------------------------------
+   INPUT DC BLOCKER
+   --------------------------------------------------------- */
+
+/*
+   Standard first-order high-pass:
+
+   y[n] = a * (y[n-1] + x[n] - x[n-1])
+
+   This is the correct form. The previous version's
+   high-pass implementation was wrong.
+*/
+
+in_y1 = a_in * (in_y1 + in - in_x1);
+in_x1 = in;
+
+x = in_y1;
+
+
+/* ---------------------------------------------------------
+   INPUT JACK
+   --------------------------------------------------------- */
+
+slider1 == 0 ?
+(
+  /* Normal input */
+  x *= 1.0;
+);
+
+slider1 == 1 ?
+(
+  /* Hot input */
+  x *= 1.45;
+);
+
+slider1 == 2 ?
+(
+  /* Saturated input */
+  x *= 2.1;
+);
+
+
+/* ---------------------------------------------------------
+   INPUT TRIM
+   --------------------------------------------------------- */
+
+x *= input_gain;
+
+
+/* ---------------------------------------------------------
+   U1B PREAMP
+   --------------------------------------------------------- */
+
+/*
+   Approximate Decade preamp gain.
+
+   Volume controls how hard the first nonlinear stage
+   is driven rather than simply acting as an output fader.
+*/
+
+pre_gain = 2.0 + slider3 * 0.75;
+
+x *= pre_gain;
+
+
+/*
+   Supply-dependent clipping.
+
+   The normalization keeps the amount of clipping
+   reasonably consistent when the Supply Rail control
+   changes.
+*/
+
+rail_scale = slider8 / 24;
+
+rail_scale = max(0.5, rail_scale);
+
+x *= rail_scale;
+
+
+/*
+   Smooth bounded transistor/IC saturation.
+
+   x / (1 + abs(x)) can NEVER exceed +/-1.
+*/
+
+x = x / (1 + abs(x));
+
+
+/*
+   Restore useful amplifier level.
+*/
+
+x *= 2.4;
+
+
+/* ---------------------------------------------------------
+   DECADE TONE NETWORK
+   --------------------------------------------------------- */
+
+/*
+   LOW BAND
+   ------------------------------------------------------
+*/
+
+bass_y1 = (1 - a_bass) * x + a_bass * bass_y1;
+
+bass_component = bass_y1;
+
+
+/*
+   HIGH BAND
+   ------------------------------------------------------
+*/
+
+treble_y1 = a_treble * (treble_y1 + x - treble_x1);
+treble_x1 = x;
+
+treble_component = treble_y1;
+
+
+/*
+   MID BAND
+   ------------------------------------------------------
+*/
+
+mid_y1 = (1 - a_mid) * x + a_mid * mid_y1;
+
+mid_component = x - mid_y1;
+
+
+/*
+   Convert controls into gains.
+
+   Center = approximately unity.
+
+   This is deliberately passive-feeling: cutting is
+   stronger than boosting.
+*/
+
+bass_control = (slider4 - 5) * 0.055;
+mid_control = (slider5 - 5) * 0.045;
+treble_control = (slider6 - 5) * 0.055;
+
+
+/*
+   Recombine tone network.
+*/
+
+tone = x;
+
+tone += bass_component * bass_control;
+tone += mid_component * mid_control;
+tone += treble_component * treble_control;
+
+
+/*
+   Passive insertion loss.
+*/
+
+tone *= 0.72;
+
+x = tone;
+
+
+/* ---------------------------------------------------------
+   U1A SECOND GAIN STAGE
+   --------------------------------------------------------- */
+
+second_gain = 1.8 + slider3 * 0.35;
+
+x *= second_gain;
+
+
+/*
+   Second nonlinear stage.
+
+   Less aggressive than U1B.
+*/
+
+x = x / (1 + abs(x) * 0.85);
+
+x *= 1.65;
+
+
+/* ---------------------------------------------------------
+   MASTER VOLUME
+   --------------------------------------------------------- */
+
+master_gain = slider7 / 5.0;
+
+x *= master_gain;
+
+
+/* ---------------------------------------------------------
+   POWER AMP
+   --------------------------------------------------------- */
+
+/*
+   Approximate LM2004-style solid-state power section.
+
+   Supply source resistance introduces a small amount
+   of dynamic supply sag.
+*/
+
+abs_x = abs(x);
+
+sag_env += (abs_x - sag_env) * 0.002;
+
+sag_amount = sag_env * slider9 * 0.004;
+
+supply_factor = 1.0 - sag_amount;
+
+supply_factor = max(0.70, supply_factor);
+
+x *= supply_factor;
+
+
+/*
+   Load-dependent drive.
+*/
+
+load_factor = 4.0 / max(2.0, slider10);
+
+load_factor = sqrt(load_factor);
+
+x *= 0.85 + load_factor * 0.15;
+
+
+/*
+   Power transistor limiting.
+
+   Again, this cannot exceed +/-1.
+*/
+
+x = x / (1 + abs(x) * 0.45);
+
+
+/* ---------------------------------------------------------
+   OUTPUT COUPLING / SPEAKER LOAD
+   --------------------------------------------------------- */
+
+/*
+   C22 is approximately 1000 uF.
+
+   Correct first-order high-pass calculation:
+
+   fc = 1 / (2*pi*R*C)
+
+   We implement it directly here.
+*/
+
+fc_out = 1 / (TWO_PI * max(2, slider10) * 0.001);
+
+a_out = exp(-TWO_PI * fc_out / srate);
+
+out_y1 = a_out * (out_y1 + x - out_x1);
+out_x1 = x;
+
+x = out_y1;
+
+
+/* ---------------------------------------------------------
+   FINAL OUTPUT
+   --------------------------------------------------------- */
+
+x *= output_gain;
+
+
+/*
+   Final safety limiter.
+
+   This only catches pathological external conditions.
+   Under normal operation the signal should never get here.
+*/
+
+x > 0.98 ? x = 0.98;
+x < -0.98 ? x = -0.98;
+
+
+/* ---------------------------------------------------------
+   STEREO OUTPUT
+   --------------------------------------------------------- */
+
+spl0 = x;
+spl1 = x;

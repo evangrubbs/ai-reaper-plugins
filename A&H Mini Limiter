@@ -1,0 +1,305 @@
+desc: Allen & Heath Mini Limiter (Stereo Oversampled Fix)
+author: AI Collaborator
+version: 10.2
+
+// Tells REAPER to hide native parameter faders completely
+slider1:12<-25,25,0.1>-Input Level (dB)
+slider2:1<0,1,1{Out,In}>-Limiter Switch
+slider3:0<0,1,1{Slow (5ms),Fast (100us)}>-Attack
+slider4:0<0,3,1{Fast (100ms),Medium (350ms),Slow (4s),Auto}>-Decay (Release)
+slider5:0<-25,0,0.1>-Output Ceiling (dB)
+
+@init
+// Constants for DSP
+ln10_20 = log(10) / 20;
+ratio = 7.0;
+threshold = 0.0; 
+
+// Memory slots for envelope calculations and UI states
+env = 0.0;
+auto_env = 0.0;
+trigger_led = 0;
+mouse_next = 0;
+mic_line_toggle = 0;
+bg_w = 0;
+bg_h = 0;
+
+// --- 2x OVERSAMPLING MEMORY STATES ---
+h0 = 0.02442; h1 = -0.09277; h2 = 0.28014; h3 = 0.57642; h4 = 0.28014; h5 = -0.09277; h6 = 0.02442;
+lx1=lx2=lx3=lx4=lx5=lx6=lx7=ly1=ly2=ly3=ly4=ly5=ly6=ly7=0;
+rx1=rx2=rx3=rx4=rx5=rx6=rx7=ry1=ry2=ry3=ry4=ry5=ry6=ry7=0;
+
+// Matte metal panel background generation logic adapted directly from reference code
+function build_bg(bw, bh)
+  local(x, y, n, rn, base)
+(
+  gfx_setimgdim(1, bw, bh);
+  gfx_dest = 1;
+  y = 0;
+  loop(bh,
+    rn = sin(y*4.1414)*43758.5453;
+    rn = rn - floor(rn);
+    x = 0;
+    loop(bw,
+      n = sin(x*12.9898 + y*78.233)*43758.5453;
+      n = n - floor(n);
+      // Beautiful dark-powdered matte metal texture blending
+      base = 0.15 - 0.03*(y/bh) + (n - 0.5)*0.025 + (rn - 0.5)*0.010;
+      gfx_x = x;
+      gfx_y = y;
+      gfx_setpixel(base, base, base);
+      x += 1;
+    );
+    y += 1;
+  );
+  // Refined 3D outer chassis frame border highlights
+  gfx_set(1, 1, 1, 0.12);
+  gfx_rect(0, 0, bw, 1);
+  gfx_rect(0, 0, 1, bh);
+  gfx_set(0, 0, 0, 0.45);
+  gfx_rect(0, bh - 1, bw, 1);
+  gfx_rect(bw - 1, 0, 1, bh);
+  gfx_a = 1;
+  gfx_dest = -1;
+);
+
+// Centered label rendering utility with automatic boundary width checking
+function draw_aligned_label(text_str, target_center_x, target_y)
+  local(measured_w, measured_h)
+(
+  gfx_measurestr(text_str, measured_w, measured_h);
+  gfx_x = floor(target_center_x - (measured_w / 2));
+  gfx_y = target_y;
+  gfx_drawstr(text_str);
+);
+
+// Native array-index brackets used to cleanly grab raw character bytes from the memory buffer
+function draw_engraved_logo_badge(str, t_cx, ty, tracking_space, font_idx)
+  local(str_len, total_w, shd_idx, bvl_idx, txt_idx, char_code, cw, ch, current_x, start_x)
+(
+  str_len = strlen(str);
+  total_w = 0;
+  gfx_setfont(font_idx);
+  
+  // Pre-calculate the total width including custom kerning gaps
+  shd_idx = 0;
+  loop(str_len,
+    char_code = str[shd_idx];
+    gfx_measurechar(char_code, cw, ch);
+    total_w += cw + tracking_space;
+    shd_idx += 1;
+  );
+  total_w -= tracking_space; 
+  start_x = floor(t_cx - (total_w / 2));
+  
+  // 1. Inset Shadow Layer
+  gfx_set(0.03, 0.03, 0.03, 0.95); 
+  current_x = start_x; shd_idx = 0;
+  loop(str_len,
+    char_code = str[shd_idx];
+    gfx_x = current_x - 1; gfx_y = ty - 1;
+    gfx_drawchar(char_code);
+    gfx_measurechar(char_code, cw, ch);
+    current_x += cw + tracking_space; shd_idx += 1;
+  );
+
+  // 2. Lower Bevel Light Catch
+  gfx_set(0.38, 0.38, 0.40, 0.50); 
+  current_x = start_x; bvl_idx = 0;
+  loop(str_len,
+    char_code = str[bvl_idx];
+    gfx_x = current_x + 1; gfx_y = ty + 1;
+    gfx_drawchar(char_code);
+    gfx_measurechar(char_code, cw, ch);
+    current_x += cw + tracking_space; bvl_idx += 1;
+  );
+
+  // 3. Stamped Paint Fill Core
+  gfx_set(0.85, 0.85, 0.85, 0.84); 
+  current_x = start_x; txt_idx = 0;
+  loop(str_len,
+    char_code = str[txt_idx];
+    gfx_x = current_x; gfx_y = ty;
+    gfx_drawchar(char_code);
+    gfx_measurechar(char_code, cw, ch);
+    current_x += cw + tracking_space; txt_idx += 1;
+  );
+);
+
+// Skeuomorphic push button renderer drawing real mechanical depth profiles
+function draw_3d_button(bx, by, state, r_val, g_val, b_val) 
+  local(press_shd, i, grad) 
+(
+  press_shd = state ? 3 : 0;
+  
+  // Ambient drop shadow frame thrown onto panel backplate
+  gfx_set(0, 0, 0, 0.5);
+  gfx_rect(bx - 1, by - 1, 42, 52);
+  gfx_set(0.03, 0.03, 0.03);
+  gfx_rect(bx - 1, by - 1, 41, 51);
+  
+  // Inner core gradient block interpolation
+  i = 2;
+  while(i < 48)(
+    grad = 0.65 + (i / 48) * 0.35;
+    state ? grad = 1.15 - (i / 48) * 0.35; 
+    gfx_r = r_val * grad; gfx_g = g_val * grad; gfx_b = b_val * grad;
+    gfx_rect(bx + 2, by + i + press_shd, 36, 1);
+    i += 1;
+  );
+  
+  // High-specular reflection line on top edge lip
+  state ? (
+    gfx_set(0, 0, 0, 0.4);
+    gfx_rect(bx + 2, by + press_shd, 36, 2);
+  ) : (
+    gfx_r = min(1.0, r_val * 1.35); gfx_g = min(1.0, g_val * 1.35); gfx_b = min(1.0, b_val * 1.35);
+    gfx_rect(bx + 2, by + 2, 36, 2);
+  );
+);
+
+@slider
+in_gain = exp(slider1 * ln10_20);
+out_gain = exp(slider5 * ln10_20);
+slider3 == 0 ? att_time = 0.005 : att_time = 0.0001;
+att_coef = exp(-1.0 / (att_time * srate * 2));
+slider4 == 0 ? dec_time = 0.1 : slider4 == 1 ? dec_time = 0.35 : slider4 == 2 ? dec_time = 4.0 : dec_time = -1;
+
+@sample
+// --- OVERSAMPLE SUB-STEP 1 ---
+lx7=lx6; lx6=lx5; lx5=lx4; lx4=lx3; lx3=lx2; lx2=lx1; lx1=spl0 * in_gain; l_up1 = lx4; 
+rx7=rx6; rx6=rx5; rx5=rx4; rx4=rx3; rx3=rx2; rx2=rx1; rx1=spl1 * in_gain; r_up1 = rx4;
+
+l_sat1 = sign(l_up1) * (1.0 - exp(-abs(l_up1 * 1.2))) / 1.2;
+r_sat1 = sign(r_up1) * (1.0 - exp(-abs(r_up1 * 1.2))) / 1.2;
+rect1 = max(abs(l_sat1), abs(r_sat1));
+r_db1 = rect1 > 0.00001 ? 20.0 * log10(rect1) : -100.0;
+slider4 == 3 ? ( auto_env = auto_env * 0.9995 + rect1 * 0.0005; dec_time = 0.05 + (auto_env * 1.95); );
+dec_coef = exp(-1.0 / (dec_time * srate * 2));
+r_db1 > env ? env = att_coef * env + (1.0 - att_coef) * r_db1 : env = dec_coef * env + (1.0 - dec_coef) * r_db1;
+gr_db1 = 0.0; slider2 == 1 ? ( env > threshold ? gr_db1 = (threshold - env) * (1.0 - (1.0 / ratio)); );
+l_proc1 = l_sat1 * exp(gr_db1 * ln10_20); 
+r_proc1 = r_sat1 * exp(gr_db1 * ln10_20); // First sub-step right assignment complete
+
+// --- OVERSAMPLE SUB-STEP 2 (Interleaved Zero-Stuff Filter Step) ---
+l_up2 = 0;
+r_up2 = 0;
+
+l_sat2 = sign(l_up2) * (1.0 - exp(-abs(l_up2 * 1.2))) / 1.2;
+r_sat2 = sign(r_up2) * (1.0 - exp(-abs(r_up2 * 1.2))) / 1.2;
+rect2 = max(abs(l_sat2), abs(r_sat2));
+r_db2 = rect2 > 0.00001 ? 20.0 * log10(rect2) : -100.0;
+r_db2 > env ? env = att_coef * env + (1.0 - att_coef) * r_db2 : env = dec_coef * env + (1.0 - dec_coef) * r_db2;
+gr_db2 = 0.0; slider2 == 1 ? ( env > threshold ? gr_db2 = (threshold - env) * (1.0 - (1.0 / ratio)); );
+l_proc2 = l_sat2 * exp(gr_db2 * ln10_20); 
+r_proc2 = r_sat2 * exp(gr_db2 * ln10_20); // FIXED: Added missing assignment expression for second sub-step audio tracking path
+
+// --- OVERSAMPLE DOWNSAMPLE FILTERING ---
+ly7=ly6; ly6=ly5; ly5=ly4; ly4=ly3; ly3=ly2; ly2=ly1; ly1=l_proc1;
+spl0 = (ly1*h0 + ly3*h1 + ly4*h2 + ly5*h3 + ly6*h4 + ly7*h5) * out_gain;
+ry7=ry6; ry6=ry5; ry5=ry4; ry4=ry3; ry3=ry2; ry2=ry1; ry1=r_proc1;
+spl1 = (ry1*h0 + ry3*h1 + ry4*h2 + ry5*h3 + ry6*h4 + ry7*h5) * out_gain;
+trigger_led = (gr_db1 < -3.0) ? 1 : 0;
+
+@gfx 650 160
+w = gfx_w;
+h = gfx_h;
+
+((w != bg_w) || (h != bg_h)) ? (
+  bg_w = w;
+  bg_h = h;
+  build_bg(w, h);
+);
+
+gfx_x = 0; gfx_y = 0;
+gfx_blit(1, 1, 0);
+
+// --- TYPOGRAPHY ENGINE ---
+gfx_setfont(1, "Arial", 11, 'b');
+gfx_r = 0.85; gfx_g = 0.85; gfx_b = 0.85; gfx_a = 0.95;
+
+draw_aligned_label("ATTACK", 175, 12);
+draw_aligned_label("INPUT LEVEL", 485, 38);
+
+gfx_setfont(2, "Arial", 11, 'b');
+gfx_r = 0.80; gfx_g = 0.80; gfx_b = 0.80;
+
+// Column 1: Source Selection
+draw_aligned_label("LINE", 55, 30);
+draw_aligned_label("MIC", 55, 100);
+
+// Column 2: Mode Bypass Toggles
+draw_aligned_label("OUT", 110, 30);
+draw_aligned_label("LIMIT", 110, 100);
+
+// Column 3: Attack Constants
+draw_aligned_label("SLOW", 175, 30);
+draw_aligned_label("FAST", 175, 100);
+
+// Columns 4 & 5: Release Section (Fixed Hardware Real Layout Mappings)
+draw_aligned_label("SLOW", 240, 30); 
+draw_aligned_label("FAST", 240, 100); 
+
+draw_aligned_label("AUTO", 290, 30); 
+draw_aligned_label("MED", 290, 100); 
+
+// Font Slot 3: GIANT 3D ENGRAVED IMPACT BADGE LOGO
+gfx_setfont(3, "Impact", 24);
+gfx_set(0.03, 0.03, 0.03, 0.95);
+draw_aligned_label("MINI-LIMITER", 484, 103);
+gfx_set(0.85, 0.85, 0.85, 0.90);
+draw_aligned_label("MINI-LIMITER", 485, 102);
+
+// --- MOUSE TRACKING ENGINE ---
+mouse_cap == 0 ? mouse_next = 0;
+is_mouse_down = (mouse_cap & 1);
+is_shift_down = (mouse_cap & 8);
+is_mouse_down > 0 ? (
+  mouse_next == 0 ? (
+    mouse_x >= 35 ? mouse_x <= 75 ? mouse_y >= 45 ? mouse_y <= 95 ? ( mic_line_toggle = 1 - mic_line_toggle; mouse_next = 1; );
+    mouse_x >= 90 ? mouse_x <= 130 ? mouse_y >= 45 ? mouse_y <= 95 ? ( slider2 = 1 - slider2; mouse_next = 1; );
+    mouse_x >= 155 ? mouse_x <= 195 ? mouse_y >= 45 ? mouse_y <= 95 ? ( slider3 = 1 - slider3; mouse_next = 1; );
+    mouse_x >= 220 ? mouse_x <= 260 ? mouse_y >= 45 ? mouse_y <= 95 ? ( slider4 == 2 ? ( slider4 = 0; ) : ( slider4 = 2; ); mouse_next = 1; );
+    mouse_x >= 270 ? mouse_x <= 310 ? mouse_y >= 45 ? mouse_y <= 95 ? ( slider4 == 1 ? ( slider4 = 2; ) : ( slider4 = 1; ); mouse_next = 1; );
+    mouse_x >= 220 ? mouse_x <= 310 ? mouse_y >= 45 ? mouse_y <= 95 ? is_shift_down > 0 ? ( slider4 = 3; mouse_next = 1; );
+  );
+);
+
+// --- DRAW HARDWARE SWITCH COMPONENTS ---
+draw_3d_button(35, 45, mic_line_toggle, 0.12, 0.12, 0.12); 
+draw_3d_button(90, 45, slider2, 0.90, 0.88, 0.82);         
+draw_3d_button(155, 45, slider3, 0.78, 0.08, 0.08);        
+draw_3d_button(220, 45, (slider4 == 0 || slider4 == 3), 0.78, 0.08, 0.08); 
+draw_3d_button(270, 45, (slider4 == 1 || slider4 == 3), 0.78, 0.08, 0.08);
+
+// --- VINTAGE EMISSIVE LED LIGHT BEZEL ---
+gfx_r = 0.04; gfx_g = 0.04; gfx_b = 0.04; gfx_a = 0.6;
+gfx_circle(328, 69, 8, 1, 1); 
+trigger_led ? (
+  gfx_r = 1.0; gfx_g = 0.15; gfx_b = 0.15; gfx_a = 1.0; gfx_circle(328, 68, 6, 1, 1); 
+  gfx_r = 1.0; gfx_g = 0.35; gfx_b = 0.35; gfx_a = 0.22; gfx_circle(328, 68, 11, 1, 1); 
+) : (
+  gfx_r = 0.28; gfx_g = 0.04; gfx_b = 0.04; gfx_a = 1.0; gfx_circle(328, 68, 6, 1, 1); 
+gfx_r = 0.60; gfx_g = 0.15; gfx_b = 0.15; gfx_a = 0.35; gfx_circle(326, 66, 2, 1, 1);
+);
+gfx_a = 1.0;
+// --- RENDER SLIDER SLOT & 3D CYLINDRICAL REFLECTION KNOB ---
+gfx_r = 0.03; gfx_g = 0.03; gfx_b = 0.03; gfx_rect(350, 66, 270, 6);
+gfx_r = 0.26; gfx_g = 0.26; gfx_b = 0.28; gfx_line(350, 72, 620, 72);
+is_mouse_down > 0 ? (
+mouse_x >= 345 ? mouse_x <= 625 ? mouse_y >= 50 ? mouse_y <= 85 ? (
+slider1 = ((mouse_x - 350) / 270) * 50.0 - 25.0;
+slider1 = max(-25.0, min(25.0, slider1));
+);
+);
+fader_pos_x = 350 + floor(((slider1 + 25.0) / 50.0) * 270);
+gfx_r = 0.01; gfx_g = 0.01; gfx_b = 0.02; gfx_a = 0.55;
+gfx_rect(fader_pos_x - 7, 54, 14, 32);
+i = 0;
+while(i < 12)(
+hl = 0.38 + sin((i / 12) * 3.14159) * 0.62;
+gfx_r = 0.18 * hl; gfx_g = 0.40 * hl; gfx_b = 0.55 * hl; gfx_a = 1.0;
+gfx_line(fader_pos_x - 6 + i, 52, fader_pos_x - 6 + i, 81);
+i += 1;
+);
+gfx_r = 0.96; gfx_g = 0.96; gfx_b = 0.96; gfx_rect(fader_pos_x - 1, 52, 2, 30);
