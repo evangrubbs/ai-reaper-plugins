@@ -2,21 +2,21 @@
 <index version="1" name="Evan Grubbs AI REAPER Plugins">
   <category name="Evan Grubbs">
 
-    <reapack name="A&amp;H Mini Limiter v1.jsfx"
+    <reapack name="Mini Limiter v1.jsfx"
              type="effect"
-             desc="A&amp;H Mini Limiter v1">
+             desc="Mini Limiter v1">
       <version name="1.0.0" author="Evan Grubbs">
         <changelog><![CDATA[Initial ReaPack release.]]></changelog>
-        <source>https://raw.githubusercontent.com/evangrubbs/ai-reaper-plugins/refs/heads/main/A%26H%20Mini%20Limiter%20v1.jsfx</source>
+        <source>https://raw.githubusercontent.com/evangrubbs/ai-reaper-plugins/refs/heads/main/Mini%20Limiter%20v1.jsfx</source>
       </version>
     </reapack>
 
-    <reapack name="A&amp;H Mini Limiter v2.jsfx"
+    <reapack name="Mini Limiter v2.jsfx"
              type="effect"
-             desc="A&amp;H Mini Limiter v2">
+             desc="Mini Limiter v2">
       <version name="1.0.0" author="Evan Grubbs">
         <changelog><![CDATA[Initial ReaPack release.]]></changelog>
-        <source>https://raw.githubusercontent.com/evangrubbs/ai-reaper-plugins/refs/heads/main/A%26H%20Mini%20Limiter%20v2.jsfx</source>
+        <source>https://raw.githubusercontent.com/evangrubbs/ai-reaper-plugins/refs/heads/main/Mini%20Limiter%20v2.jsfx</source>
       </version>
     </reapack>
 
