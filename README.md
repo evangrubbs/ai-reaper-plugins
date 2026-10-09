@@ -14,6 +14,6 @@ PV Decade Amp Sim is based on the Peavey Decade
 PV Decade Amp Sim v1 was built by Claude Sonnet 5.5 Medium
 PV Decade Amp Sim v2 was built by Claude Sonnet 5.5 Medium and has slightly higher gain than v1
 
-SSL Talkback Mic Limiter is based on the SSL 4000 Listen Mic Compressor
-SSL Talkback Mic Limiter was built by Google's Search Bar AI and refined by Claude Sonnet 5.5 Medium
+Talkback Mic Limiter is based on the SSL 4000 Listen Mic Compressor
+Talkback Mic Limiter was built by Google's Search Bar AI and refined by Claude Sonnet 5.5 Medium
 Once the plugin is loaded in Reaper, right click it and select "Show Embedded UI in MCP" to see it's GUI in the plugin window of the Mixer page
