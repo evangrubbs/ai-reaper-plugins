@@ -47,12 +47,12 @@
       </version>
     </reapack>
 
-    <reapack name="SSL Talkback Mic Limiter.jsfx"
+    <reapack name="Talkback Mic Limiter.jsfx"
              type="effect"
-             desc="SSL Talkback Mic Limiter">
+             desc="Talkback Mic Limiter">
       <version name="1.0.0" author="Evan Grubbs">
         <changelog><![CDATA[Initial ReaPack release.]]></changelog>
-        <source>https://raw.githubusercontent.com/evangrubbs/ai-reaper-plugins/refs/heads/main/SSL%20Talkback%20Mic%20Limiter.jsfx</source>
+        <source>https://raw.githubusercontent.com/evangrubbs/ai-reaper-plugins/refs/heads/main/Talkback%20Mic%20Limiter.jsfx</source>
       </version>
     </reapack>
 
