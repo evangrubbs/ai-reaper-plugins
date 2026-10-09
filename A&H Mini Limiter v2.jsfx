@@ -1,0 +1,422 @@
+desc:A&H Mini Limiter (schematic recreation) v3
+author:Evan Grubbs / Claude
+version:3.0
+options:no_meter
+
+// ---------------------------------------------------------------------------
+//  Recreation of a vintage discrete FET limiter (7:1) from its schematic, spec
+//  sheet and compression-curve chart, with a hardware-style panel.
+//
+//  Every slider is hidden: the panel is the interface. All sliders are still
+//  normal plugin parameters (automation / FX parameter list).
+//
+//  Panel: input fader + 5 push buttons, as on the hardware:
+//  1 line/mic, 2 limiter out/in, 3 attack slow/fast, 4 decay fast,
+//  5 decay medium, 4+5 together = AUTO decay.
+//  Defaults: +12 dB input, slow attack, fast release, stereo link off.
+//
+//  "dBm" inside this plugin is PEAK-referenced: a sine whose digital peak sits
+//  at the "Alignment" setting counts as 0 dBm.
+//  Alignment -15 dBFS: with the fader at +12 dB, a -18 dBFS peak gets the same
+//  limiting that a -9 dBFS peak got in v2.
+// ---------------------------------------------------------------------------
+
+slider1:12<-25,25,0.1>-Input Level (dB)
+slider2:1<0,1,1{Line,Mic}>-Button 1 - Input
+slider3:1<0,1,1{Out,In}>-Button 2 - Limiter
+slider4:0<0,1,1{Out - slow 5ms,In - fast 100us}>-Button 3 - Attack
+slider5:1<0,1,1{Out,In - fast 100ms}>-Button 4 - Decay
+slider6:0<0,1,1{Out,In - medium 350ms}>-Button 5 - Decay (4+5 = auto)
+slider7:0<0,1,1{Off,On}>-Stereo control link
+slider8:0<-10,8,0.1>-VR2 Threshold (dBm out at 1 dB limiting)
+slider9:3<1,8,0.1>-VR3 LED lights at (dB of limiting)
+slider10:1<0,10,0.01>-VR4 FET distortion (x datasheet, 0 = trimmed out)
+slider11:-15<-36,0,0.1>-Alignment: 0 dBm = (dBFS peak)
+slider12:0<0,1,1{0 dBm out,-30 dBm out}>-Output tap
+slider13:-6<-24,24,0.1>-Output trim (dB)
+slider14:0<-25,0,0.1>-Output ceiling (dBFS, soft clip)
+slider15:1<0.25,4,0.01>-Timing scale (x datasheet times)
+
+in_pin:Left
+in_pin:Right
+out_pin:Left
+out_pin:Right
+
+@init
+ratio     = 7;                // datasheet: 7:1 above threshold
+GRMAX     = 40;               // dB. FET attenuator range. ASSUMPTION (sheet: ">= 20 dB")
+MIC_EXTRA = 6;               // dB. fixed extra gain when Mic is selected
+CLIPLVL   = 10^(17/20);       // +17 dBm max output
+TAP30     = 10^(-30.19/20);   // 47K / 1K5 divider on the -30 dBm output
+AUTO_C2   = 10;               // 100uF / 10uF capacitor ratio from the schematic
+AUTO_RHO  = 0.020;            // s, auto-release network, tuned to the sheet's 50 ms .. 2 s
+AUTO_TAUD = 0.083;            // s
+
+// diode + RC peak detector, optional two-capacitor auto-release
+function det(s) instance(e1, e2) local(d) global(aa, rdec, auto, kd1, k12, k12b) (
+  s > e1 ? e1 += (s - e1) * aa;
+  auto ? (
+    d = e1 - e2;
+    e1 -= e1 * kd1 + d * k12;
+    e2 += d * k12b;
+  ) : (
+    e1 *= rdec;
+    e2 = e1;
+  );
+  e1 < 0.000000001 ? ( e1 = 0; e2 = 0; );
+  e1;
+);
+
+// control voltage -> linear gain (7:1 hard knee, 1 dB limiting at the VR2 level)
+function gain_of(e) global(Klin, GRslope, GRMAX, gr_now) local(od) (
+  gr_now = 0;
+  e > Klin ? (
+    od = 8.685889638 * log(e / Klin);
+    gr_now = min(od * GRslope, GRMAX);
+  );
+  exp(-0.1151292546 * gr_now);
+);
+
+function th(x) local(e) (
+  x > 20 ? 1 : x < -20 ? -1 : (e = exp(2 * x); (e - 1) / (e + 1));
+);
+
+// soft clip: linear up to kf*C, smooth knee up to C
+function oclip(x, C, kf) local(a, k, s) (
+  a = abs(x);
+  s = x < 0 ? -1 : 1;
+  k = kf * C;
+  a > k ? ( a = k + (C - k) * th((a - k) / (C - k)); );
+  s * a;
+);
+
+gr_disp = 0; gr_blk = 0; gr_l = 0; gr_r = 0;
+
+@block
+dt   = 1 / srate;
+ref  = 10^(slider11 / 20);                          // digital peak amplitude of 0 dBm
+kpre = 10^((slider1 + (slider2 ? MIC_EXTRA : 0)) / 20) / ref;
+
+// slider8 = output level at 1 dB of limiting (datasheet definition)
+Klin    = 10^((slider8 - 1 / (ratio - 1)) / 20);
+GRslope = 1 - 1 / ratio;
+
+// datasheet times are ~10-90 % times, so tau = time / 2.2
+ts    = slider15 / 2.2;
+tau_a = (slider4 ? 0.0001 : 0.005) * ts;
+aa    = 1 - exp(-dt / tau_a);
+auto  = slider5 && slider6;
+tau_r = slider5 ? 0.100 : slider6 ? 0.350 : 4.0;
+rdec  = exp(-dt / (tau_r * ts));
+kd1   = dt / (AUTO_TAUD * slider15);
+k12   = dt / (AUTO_RHO  * slider15);
+k12b  = dt / (AUTO_RHO * AUTO_C2 * slider15);
+
+c3    = 0.004 * slider10;                           // 0.1 % THD at 0 dBm out per datasheet
+otap  = slider12 ? TAP30 : 1;
+kout  = ref * otap * 10^(slider13 / 20);
+ceil_lin = 10^(slider14 / 20);
+limon = slider3;
+gr_blk = 0;
+
+@sample
+pl = spl0 * kpre;
+pr = spl1 * kpre;
+sl = abs(pl);
+sr = abs(pr);
+slider7 ? ( sl = sr = max(sl, sr); );
+
+el = dl.det(sl);
+er = dr.det(sr);
+
+limon ? (
+  slider7 ? (
+    // Linked: use the larger envelope for identical L/R gain.
+    gnL = gain_of(max(el, er));
+    gnR = gnL;
+    gr_l = gr_r = gr_now;
+  ) : (
+    // Unlinked: independent gain reduction per channel.
+    gnL = gain_of(el); gr_l = gr_now;
+    gnR = gain_of(er); gr_r = gr_now;
+  );
+) : (
+  gnL = gnR = 1;
+  gr_l = gr_r = 0;
+);
+gr_blk = max(gr_blk, max(gr_l, gr_r));
+
+ql = pl * gnL;
+qr = pr * gnR;
+ql = ql / sqrt(1 + 2 * c3 * ql * ql);               // FET channel non-linearity
+qr = qr / sqrt(1 + 2 * c3 * qr * qr);
+
+spl0 = oclip(oclip(ql, CLIPLVL, 0.7) * kout, ceil_lin, 0.85);
+spl1 = oclip(oclip(qr, CLIPLVL, 0.7) * kout, ceil_lin, 0.85);
+
+// ---------------------------------------------------------------------------
+//  GUI. Everything is laid out in a fixed 660 x 204 design space which is
+//  scaled uniformly and centred in the window, so the panel resizes as one.
+// ---------------------------------------------------------------------------
+@gfx 660 204
+
+// ---- drawing helpers (design-space coordinates -> window pixels)
+function R(x, y, w, h) global(ox, oy, s) local(x0, y0) (
+  x0 = floor(ox + x * s); y0 = floor(oy + y * s);
+  gfx_rect(x0, y0, max(1, floor(ox + (x + w) * s) - x0), max(1, floor(oy + (y + h) * s) - y0));
+);
+function Ln(x1, y1, x2, y2) global(ox, oy, s) (
+  gfx_line(ox + x1 * s, oy + y1 * s, ox + x2 * s, oy + y2 * s, 1);
+);
+function Ci(x, y, rad) global(ox, oy, s) (
+  gfx_circle(ox + x * s, oy + y * s, rad * s, 1, 1);
+);
+function lbl(str, cx, y) global(ox, oy, s, gfx_x, gfx_y) local(w, h) (
+  gfx_measurestr(str, w, h);
+  gfx_x = floor(ox + cx * s - w / 2); gfx_y = floor(oy + y * s);
+  gfx_drawstr(str);
+);
+// legend: bright when it is the active position of the switch
+function leg(str, cx, y, on) (
+  on ? gfx_set(0.93, 0.93, 0.93, 1) : gfx_set(0.55, 0.55, 0.57, 1);
+  lbl(str, cx, y);
+);
+function hit(x, y, w, h) global(mx, my) (
+  mx >= x && mx < x + w && my >= y && my < y + h;
+);
+
+function btn3d(bx, by, st, rr, gg, bb) local(i, grad, sh) (
+  sh = st ? 3 : 0;
+  gfx_set(0, 0, 0, 0.5);        R(bx - 1, by - 1, 42, 52);
+  gfx_set(0.03, 0.03, 0.03, 1); R(bx - 1, by - 1, 41, 51);
+  i = 2;
+  loop(46,
+    grad = st ? 1.15 - (i / 48) * 0.35 : 0.65 + (i / 48) * 0.35;
+    gfx_r = rr * grad; gfx_g = gg * grad; gfx_b = bb * grad; gfx_a = 1;
+    R(bx + 2, by + i + sh, 36, 1);
+    i += 1;
+  );
+  st ? (
+    gfx_set(0, 0, 0, 0.4); R(bx + 2, by + sh, 36, 2);
+  ) : (
+    gfx_r = min(1, rr * 1.35); gfx_g = min(1, gg * 1.35); gfx_b = min(1, bb * 1.35); gfx_a = 1;
+    R(bx + 2, by + 2, 36, 2);
+  );
+);
+
+// small matte-metal noise tile, built once and tiled over the whole window
+function build_tex() local(x, y, n, rn, base) (
+  gfx_setimgdim(1, 256, 256);
+  gfx_dest = 1;
+  y = 0;
+  loop(256,
+    rn = sin(y * 3.7321) * 24634.6345; rn = rn - floor(rn);
+    x = 0;
+    loop(256,
+      n = sin(x * 11.1317 + y * 71.913) * 31415.9265; n = n - floor(n);
+      base = 0.15 + (n - 0.5) * 0.025 + (rn - 0.5) * 0.010;
+      gfx_x = x; gfx_y = y;
+      gfx_setpixel(base, base, base);
+      x += 1;
+    );
+    y += 1;
+  );
+  gfx_dest = -1;
+);
+
+// ---- layout (design space)
+W0 = 660; H0 = 204;
+T  = 38;                                   // top of the vertically-centred control block
+BTY = T + 33;                              // button top
+FX0 = 345; FW = 240;                       // fader track start / width
+FMIN = -25; FMAX = 25; FDEF = 12;
+FHY = T + 36; FHH = 44;                    // fader hit area y / height
+GRX = 628; GRW = 12; GRY = 36; GRH = 134;  // vertical gain-reduction meter
+GRTOP = 20;                                // dB shown at the bottom of the meter
+
+frame += 1;
+s  = min(gfx_w / W0, gfx_h / H0);
+ox = floor((gfx_w - W0 * s) / 2);
+oy = floor((gfx_h - H0 * s) / 2);
+mx = (mouse_x - ox) / s;
+my = (mouse_y - oy) / s;
+
+!tex_ok ? ( build_tex(); tex_ok = 1; );
+abs(s - s_prev) > 0.0005 ? (
+  s_prev = s;
+  gfx_setfont(1, "Arial", max(8, floor(11 * s + 0.5)), 'b');
+  gfx_setfont(3, "Arial", max(7, floor(10 * s + 0.5)));
+  gfx_setfont(4, "Impact", max(10, floor(24 * s + 0.5)));
+  gfx_setfont(5, "Arial", max(8, floor(12 * s + 0.5)), 'b');
+);
+
+// ---- background: tiled texture + soft vertical shading + bevel at the window edge
+gfx_set(1, 1, 1, 1);
+ty = 0;
+loop(ceil(gfx_h / 256),
+  tx = 0;
+  loop(ceil(gfx_w / 256),
+    gfx_x = tx * 256; gfx_y = ty * 256; gfx_blit(1, 1, 0);
+    tx += 1;
+  );
+  ty += 1;
+);
+k = 0;
+loop(16,
+  gfx_set(0, 0, 0, 0.014 * k);
+  gfx_rect(0, floor(k * gfx_h / 16), gfx_w, floor((k + 1) * gfx_h / 16) - floor(k * gfx_h / 16));
+  k += 1;
+);
+gfx_set(1, 1, 1, 0.12); gfx_rect(0, 0, gfx_w, 1); gfx_rect(0, 0, 1, gfx_h);
+gfx_set(0, 0, 0, 0.45); gfx_rect(0, gfx_h - 1, gfx_w, 1); gfx_rect(gfx_w - 1, 0, 1, gfx_h);
+
+// ---- mouse
+mcap  = mouse_cap & 1;
+click = mcap && !mdown;
+shft  = (mouse_cap & 8) > 0;
+click ? (
+  hit(30, BTY, 40, 50)  ? ( slider2 = 1 - slider2; sliderchange(slider2); slider_automate(slider2); );
+  hit(85, BTY, 40, 50)  ? ( slider3 = 1 - slider3; sliderchange(slider3); slider_automate(slider3); );
+  hit(150, BTY, 40, 50) ? ( slider4 = 1 - slider4; sliderchange(slider4); slider_automate(slider4); );
+  hit(215, BTY, 40, 50) ? ( slider5 = 1 - slider5; sliderchange(slider5); slider_automate(slider5); );
+  hit(265, BTY, 40, 50) ? ( slider6 = 1 - slider6; sliderchange(slider6); slider_automate(slider6); );
+  hit(FX0 - 8, FHY, FW + 16, FHH) ? (
+    // double-click or ctrl/cmd-click resets to the default (+12 dB)
+((last_click_frame > 0 && frame - last_click_frame < 14) || (mouse_cap & 4)) ? (
+      slider1 = FDEF; sliderchange(slider1); slider_automate(slider1); drag = 0;
+    ) : (
+      drag = 1;
+      kx = FX0 + (slider1 - FMIN) / (FMAX - FMIN) * FW;
+      abs(mx - kx) > 8 ? (                              // click on the track: jump there
+        slider1 = max(FMIN, min(FMAX, floor(((mx - FX0) / FW * (FMAX - FMIN) + FMIN) * 10 + 0.5) / 10));
+        sliderchange(slider1); slider_automate(slider1);
+      );
+      drag_x0 = mx; drag_v0 = slider1; shft_prev = shft;
+    );
+    last_click_frame = frame;
+  );
+);
+mcap ? (
+  drag ? (
+    shft != shft_prev ? ( drag_x0 = mx; drag_v0 = slider1; shft_prev = shft; );
+    v = drag_v0 + (mx - drag_x0) / FW * (FMAX - FMIN) * (shft ? 0.1 : 1);
+    v = max(FMIN, min(FMAX, floor(v * 10 + 0.5) / 10));
+    v != slider1 ? ( slider1 = v; sliderchange(slider1); slider_automate(slider1); );
+  );
+) : ( drag = 0; );
+mdown = mcap;
+mouse_wheel != 0 ? (
+  hit(FX0 - 8, FHY, FW + 16, FHH) ? (
+    v = slider1 + (mouse_wheel > 0 ? 1 : -1) * (shft ? 0.1 : 0.5);
+    v = max(FMIN, min(FMAX, floor(v * 10 + 0.5) / 10));
+    slider1 = v; sliderchange(slider1); slider_automate(slider1);
+  );
+  mouse_wheel = 0;
+);
+
+// ---- legends
+gfx_setfont(1);
+gfx_set(0.85, 0.85, 0.85, 0.95);
+lbl("ATTACK", 170, T);
+lbl("DECAY", 260, T);
+lbl("INPUT LEVEL", FX0 + FW / 2, T + 12);
+leg("LINE",  50, T + 18, !slider2);  leg("MIC",   50, T + 88, slider2);
+leg("OUT",  105, T + 18, !slider3);  leg("LIMIT", 105, T + 88, slider3);
+leg("SLOW", 170, T + 18, !slider4);  leg("FAST",  170, T + 88, slider4);
+leg("SLOW", 235, T + 18, !slider5);  leg("FAST",  235, T + 88, slider5);
+leg("SLOW", 285, T + 18, !slider6);  leg("MED",   285, T + 88, slider6);
+// 4+5 = AUTO bracket
+auto_on = slider5 && slider6;
+auto_on ? gfx_set(1, 0.65, 0.15, 1) : gfx_set(0.45, 0.45, 0.47, 1);
+Ln(235, T + 106, 235, T + 110); Ln(235, T + 110, 285, T + 110); Ln(285, T + 110, 285, T + 106);
+lbl("4 + 5 = AUTO", 260, T + 114);
+
+// ---- buttons
+btn3d(30,  BTY, slider2, 0.12, 0.12, 0.12);
+btn3d(85,  BTY, slider3, 0.90, 0.88, 0.82);
+btn3d(150, BTY, slider4, 0.78, 0.08, 0.08);
+btn3d(215, BTY, slider5, 0.78, 0.08, 0.08);
+btn3d(265, BTY, slider6, 0.78, 0.08, 0.08);
+
+// ---- LED (trips at the VR3 setting)
+gr_disp = max(gr_disp * 0.9, gr_blk);
+led = gr_disp >= slider9;
+gfx_set(0.04, 0.04, 0.04, 0.6); Ci(325, T + 58, 8);
+led ? (
+  gfx_set(1, 0.15, 0.15, 1);       Ci(325, T + 57, 6);
+  gfx_set(1, 0.35, 0.35, 0.22);    Ci(325, T + 57, 11);
+) : (
+  gfx_set(0.28, 0.04, 0.04, 1);    Ci(325, T + 57, 6);
+  gfx_set(0.60, 0.15, 0.15, 0.35); Ci(323, T + 55, 2);
+);
+gfx_setfont(3);
+gfx_set(0.55, 0.55, 0.57, 1);
+sprintf(#ledtxt, ">%.0f dB", slider9);
+lbl(#ledtxt, 325, T + 72);
+
+// ---- fader: slot, ticks, knob
+gfx_set(0.03, 0.03, 0.03, 1); R(FX0, T + 54, FW, 6);
+gfx_set(0.26, 0.26, 0.28, 1); R(FX0, T + 60, FW, 1);
+gfx_set(0.45, 0.45, 0.47, 0.8);
+tk = FMIN;
+loop(11,
+  tkx = floor(FX0 + (tk - FMIN) / (FMAX - FMIN) * FW);
+  R(tkx, T + 64, 1, tk == 0 ? 6 : 3);
+  tk += 5;
+);
+gfx_set(0.55, 0.55, 0.57, 1);
+lbl("-25", FX0 + 10, T + 74); lbl("0", FX0 + FW / 2, T + 74); lbl("+25", FX0 + FW - 10, T + 74);
+
+fx = FX0 + floor((slider1 - FMIN) / (FMAX - FMIN) * FW);
+gfx_set(0.01, 0.01, 0.02, 0.55); R(fx - 7, T + 42, 14, 32);
+i = 0;
+loop(12,
+  hl = 0.38 + sin((i / 12) * 3.14159) * 0.62;
+  gfx_set(0.18 * hl, 0.40 * hl, 0.55 * hl, 1);
+  R(fx - 6 + i, T + 40, 1, 29);
+  i += 1;
+);
+gfx_set(0.96, 0.96, 0.96, 1); R(fx - 1, T + 40, 2, 30);
+
+// value read-out
+gfx_setfont(1);
+sprintf(#vtxt, "%+.1f dB", slider1);
+gfx_set(0.85, 0.85, 0.85, 0.95);
+lbl(#vtxt, FX0 + FW / 2, T + 26);
+
+// ---- logo badge
+gfx_setfont(4);
+gfx_set(0.03, 0.03, 0.03, 0.95); lbl("MINI-LIMITER", FX0 + FW / 2 - 1, T + 89);
+gfx_set(0.85, 0.85, 0.85, 0.90); lbl("MINI-LIMITER", FX0 + FW / 2, T + 88);
+
+// ---- vertical gain-reduction meter (extra, not on the hardware); 0 dB at the top
+gfx_set(0.03, 0.03, 0.03, 1); R(GRX - 1, GRY - 1, GRW + 2, GRH + 2);
+gfx_set(0.10, 0.10, 0.11, 1); R(GRX, GRY, GRW, GRH);
+gfx_set(1, 0.55, 0.12, 1);    R(GRX, GRY, GRW, min(1, gr_disp / GRTOP) * GRH);
+gfx_set(0.45, 0.45, 0.47, 0.8);
+k = 0;
+loop(5,
+  R(GRX - 5, GRY + k * 5 / GRTOP * GRH, 4, 1);
+  k += 1;
+);
+gfx_setfont(3);
+gfx_set(0.55, 0.55, 0.57, 1);
+lbl("0", GRX - 12, GRY - 5); lbl("10", GRX - 13, GRY + GRH / 2 - 5); lbl("20", GRX - 13, GRY + GRH - 5);
+gfx_set(1, 0.2, 0.2, 0.9); R(GRX - 2, GRY + slider9 / GRTOP * GRH, GRW + 4, 1);   // LED trip point
+gfx_set(0.85, 0.85, 0.85, 0.95);
+lbl("GR", GRX + GRW / 2, 18);
+sprintf(#grtxt, "%.1f dB", gr_disp);
+lbl(#grtxt, GRX + GRW / 2 - 4, GRY + GRH + 8);
+
+// ---- floating value box while dragging
+drag ? (
+  gfx_setfont(5);
+  gfx_measurestr(#vtxt, bw2, bh2);
+  bxx = max(ox + 2, min(gfx_w - bw2 - 14, ox + (fx - 6) * s - bw2 / 2));
+  gfx_set(0.02, 0.02, 0.02, 0.92);
+  gfx_rect(bxx, oy + (T + 80) * s, bw2 + 12, bh2 + 6);
+  gfx_set(0.95, 0.95, 0.95, 1);
+  gfx_x = bxx + 6; gfx_y = oy + (T + 80) * s + 3; gfx_drawstr(#vtxt);
+);
+
+
