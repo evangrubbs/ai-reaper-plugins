@@ -2,9 +2,9 @@
 Plugins for Reaper made by AI
 All releases are unofficial and not affiliated in any way with the hardware they're emulating
 
-A&H Mini Limiter is based on the Allen & Heath Pro Limiter aka Mini Limiter. 
-A&H Mini Limiter v1 was made by Google's Search Bar AI from the schematics but has several problems
-A&H Mini Limiter v2 was made by Claude Sonnet 5.5 Extra and seems to working as designed
+Mini Limiter is based on the Allen & Heath Pro Limiter aka Mini Limiter. 
+Mini Limiter v1 was made by Google's Search Bar AI from the schematics but has several problems
+Mini Limiter v2 was made by Claude Sonnet 5.5 Extra and seems to working as designed
 
 G Comp Clone is based on a schematic by Gyrax
 G Comp Clone was a collaboration between ChatGPT and Grok and may have problems
