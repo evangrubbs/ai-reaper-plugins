@@ -1,1 +1,0 @@
-This plugin was designed to be a visible GUI in Reaper's Mixer plugin window as well as a floating plugin. To see the GUI in the Mixer, right click the plugin and click "Show embedded UI in MCP." This isn't necessary but it's how I designed it to be used. 
