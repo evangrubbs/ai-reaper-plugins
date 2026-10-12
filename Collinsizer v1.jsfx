@@ -1,0 +1,476 @@
+desc:Collinsizer - Vocal / Delay / Doubler / Room
+// Prototype 0.3. A&H DSP from supplied v3.0, Evan Grubbs / Claude.
+// Mono SSL DSP from supplied v3.3, AI Collaborator.
+// Main controls: -10..+10; zero centers retain 0/-9/-3/-15 dB voicing.
+// REAPER 6.74+. Right-click panel to access Advanced and track channels.
+version:0.3
+options:maxmem=2097152
+slider1:0<-10,10,0.01>-Vocal (-10 to +10)
+slider2:0<-10,10,0.01>-Delay (-10 to +10)
+slider3:0<-10,10,0.01>-Doubler (-10 to +10)
+slider4:0<-10,10,0.01>-Room (-10 to +10)
+slider5:12<-25,25,0.1>-Mini input (dB)
+slider6:1<0,1,1{Line,Mic}>-Mini input mode
+slider7:1<0,1,1{Out,In}>-Mini limiter
+slider8:0<0,1,1{Slow 5ms,Fast 100us}>-Mini attack
+slider9:0<0,3,1{Fast 100ms,Medium 350ms,Slow 4s,Auto}>-Mini decay
+slider10:1<0.1,50,0.1>-Gate attack (ms)
+slider11:250<1,2000,1>-Gate release (ms)
+slider12:-80<-120,0,0.1>-Gate opening threshold (dBFS)
+slider13:3<0,12,0.1>-Gate hysteresis (dB)
+slider14:-120<-120,0,1>-Gate closed attenuation (dB; -120=silence)
+slider15:18<0,30,0.1>-Talkback drive (dB)
+slider16:0<-20,20,0.1>-Talkback output (dB)
+slider17:1<0,1,1{Out,In}>-Talkback compressor
+slider18:1<0,1,1{Off,On}>-Talkback 2x oversampling
+slider19:-6<-90,12,0.1>-Vocal-to-room send (dB; -90=mute)
+slider20:-12<-90,12,0.1>-Doubler-to-room send (dB; -90=mute)
+slider21:1<0,1,1{Off,On}>-IR energy normalization
+slider22:0<0,1,1{Off,On}>-Mini stereo link
+slider23:0<-10,8,0.1>-Mini threshold trim (dBm)
+slider24:1<0,10,0.01>-Mini FET distortion
+slider25:-15<-36,0,0.1>-Mini alignment (dBFS peak)
+slider26:-6<-24,24,0.1>-Mini output trim (dB)
+slider27:0<-25,0,0.1>-Mini output ceiling (dBFS)
+slider28:1<0.25,4,0.01>-Mini timing scale
+slider29:0<0,1,1{Active,Bypass}>-Gate bypass
+slider30:0<0,9,1{Main 1-2,Pair 3-4,Pair 5-6,Pair 7-8,Pair 9-10,Main + 3-4,Main + 5-6,Main + 7-8,Main + 9-10,Off}>-Vocal destination
+slider31:0<0,9,1{Main 1-2,Pair 3-4,Pair 5-6,Pair 7-8,Pair 9-10,Main + 3-4,Main + 5-6,Main + 7-8,Main + 9-10,Off}>-Delay destination
+slider32:0<0,9,1{Main 1-2,Pair 3-4,Pair 5-6,Pair 7-8,Pair 9-10,Main + 3-4,Main + 5-6,Main + 7-8,Main + 9-10,Off}>-Doubler destination
+slider33:0<0,9,1{Main 1-2,Pair 3-4,Pair 5-6,Pair 7-8,Pair 9-10,Main + 3-4,Main + 5-6,Main + 7-8,Main + 9-10,Off}>-Room destination
+slider34:0<0,1,1{0 dBm,-30 dBm}>-Mini output tap
+slider35:0<0,1,1{Closed,Open}>-Advanced panel
+slider36:/ParallelRoomIR:Default_Room.wav:-Room IR file
+in_pin:Input L
+in_pin:Input R
+out_pin:Main L
+out_pin:Main R
+out_pin:Aux 3
+out_pin:Aux 4
+out_pin:Aux 5
+out_pin:Aux 6
+out_pin:Aux 7
+out_pin:Aux 8
+out_pin:Aux 9
+out_pin:Aux 10
+
+@init
+ext_noinit=1; ext_nodenorm=1; ext_tail_size=-1;
+B=256; N=512; STRIDE=1024; MAX_IR=131072;
+SL=65536; SR=131072; HL=196608; HR=262144;
+MASTER=327680; WORK=458752; DIRECT=589824; DHIST=590336;
+OUTBLOCK=591360; OVERLAP=591872;
+FFTBUF=592896; TEMP=593920; ACC=594944;
+HSPEC=655360; XSPEC=1179648;
+HB=1000; XL=1100; P0=1116; P1=1132;
+last_sr=0; normalization_previous=-1;
+file_selection_previous=slider36;
+load_pending=0; rebuild_pending=1;
+strlen(#ir_name)==0?strcpy(#ir_name,"Built-in synthetic room (not a measured IR)");
+strcpy(#status,"Ready - built-in room");
+
+function dbgain(db) (db<=-90?0:exp(db*log(10)/20););
+function macro_db(v,center) (
+  v=max(-10,min(10,v));
+  v>=0 ? center+(v/10)*(12-center) : center+(v/10)*(center+90);
+);
+function soft_tanh(x) local(e) (
+  x>20?1:x<-20?-1:(e=exp(2*x);(e-1)/(e+1));
+);
+function mini_clip(x,C,kf) local(a,k,sg) (
+  a=abs(x);sg=x<0?-1:1;k=kf*C;
+  a>k?a=k+(C-k)*soft_tanh((a-k)/(C-k));sg*a;
+);
+function mini_detect(x) instance(e1,e2) local(d) (
+  x>e1?e1+=(x-e1)*m_attack;
+  m_auto?(d=e1-e2;e1-=e1*m_kd1+d*m_k12;e2+=d*m_k12b;)
+        :(e1*=m_release;e2=e1;);
+  e1<0.000000001?(e1=0;e2=0;);e1;
+);
+function mini_gain(e) local(gr) (
+  gr=0;e>m_threshold?gr=min(8.685889638*log(e/m_threshold)*(1-1/7),40);
+  mini_gr_now=gr;exp(-0.1151292546*gr);
+);
+function mini_process(l,r) local(pl,pr,sl,sr,el,er,gl,gr,ql,qr) (
+  pl=l*m_pre;pr=r*m_pre;sl=abs(pl);sr=abs(pr);
+  slider22?sl=sr=max(sl,sr);
+  el=mdL.mini_detect(sl);er=mdR.mini_detect(sr);
+  slider7?(
+    slider22?(gl=mini_gain(max(el,er));gr=gl;mini_gr=max(mini_gr,mini_gr_now);)
+    :(gl=mini_gain(el);mini_gr=max(mini_gr,mini_gr_now);
+      gr=mini_gain(er);mini_gr=max(mini_gr,mini_gr_now););
+  ):(gl=gr=1;);
+  ql=pl*gl;qr=pr*gr;
+  ql/=sqrt(1+2*m_dist*ql*ql);qr/=sqrt(1+2*m_dist*qr*qr);
+  compL=mini_clip(mini_clip(ql,m_clip,0.7)*m_out,m_ceiling,0.85);
+  compR=mini_clip(mini_clip(qr,m_clip,0.7)*m_out,m_ceiling,0.85);
+);
+function init_halfband() local(j,k,c,total) (
+  total=0;j=0;
+  loop(16,k=abs(2*j-15);
+    c=(sin($pi*k/2)/($pi*k))*(0.42+0.5*cos($pi*k/16)+0.08*cos(2*$pi*k/16));
+    HB[j]=c;total+=c;j+=1;);
+  j=0;loop(16,HB[j]*=0.5/total;j+=1;);
+);
+function hb_dot(buf,p) local(i,sum) (
+  sum=0;i=0;loop(16,sum+=HB[i]*buf[(p-i)&15];i+=1;);sum;
+);
+function talk_step(x) local(rect,level,gr) (
+  rect=abs(x);level=rect>0.00001?20*log10(rect):-100;
+  level>talk_env?talk_env=t_attack*talk_env+(1-t_attack)*level
+               :talk_env=t_release*talk_env+(1-t_release)*level;
+  gr=0;slider17&&talk_env>-18?gr=(-18-talk_env)*(1-1/1000);
+  talk_gr=max(talk_gr,-gr);x*exp(gr*log(10)/20);
+);
+function talk_process(x) local(y) (
+  slider18?(
+    talk_wp=(talk_wp+1)&15;XL[talk_wp]=x*t_in;
+    P0[talk_wp]=talk_step(2*hb_dot(XL,talk_wp));
+    y=0.5*P1[(talk_wp-8)&15]+hb_dot(P0,talk_wp);
+    P1[talk_wp]=talk_step(XL[(talk_wp-7)&15]);
+  ):y=talk_step(x*t_in);y*t_out;
+);
+function delay_read(base,delay) local(pos,idx,frac) (
+  pos=write_pos-delay;pos<0?pos+=65536;idx=floor(pos);frac=pos-idx;
+  base[idx]+frac*(base[(idx+1)&65535]-base[idx]);
+);
+function shifted_voice(base,center,phase) local(other,w) (
+  other=phase+0.5;other>=1?other-=1;w=sin($pi*phase);w*=w;
+  w*delay_read(base,center+(phase-0.5)*window_samples)
+  +(1-w)*delay_read(base,center+(other-0.5)*window_samples);
+);
+function builtin_room() local(i,t,n,a,pos) (
+  master_rate=srate;master_len=min(MAX_IR,floor(srate*0.48));
+  memset(MASTER,0,MAX_IR);i=0;
+  loop(master_len,t=i/srate;
+    n=sin(i*12.9898+17.234)*43758.5453;n=2*(n-floor(n))-1;
+    a=t>=0.012?0.022*exp(-t/0.085)*n:0;MASTER[i]=a;i+=1;);
+  pos=floor(srate*0.012);MASTER[pos]+=0.65;
+  pos=floor(srate*0.021);MASTER[pos]-=0.40;
+  pos=floor(srate*0.033);MASTER[pos]+=0.28;
+  pos=floor(srate*0.047);MASTER[pos]-=0.18;
+  pos=floor(srate*0.068);MASTER[pos]+=0.12;
+  strcpy(#ir_name,"Built-in synthetic room (not a measured IR)");rebuild_pending=1;
+);
+function load_ir() local(handle,nch,rate,avail,frames,i,l,r) (
+  handle=file_open(slider36);
+  handle<0?strcpy(#status,"IR open failed; previous room retained"):(
+    nch='rqsr';rate=srate;file_riff(handle,nch,rate);
+    (nch==1||nch==2)?(
+      avail=file_avail(handle);frames=min(min(MAX_IR,floor(2*srate)),floor(avail/nch));
+      frames>0?(
+        memset(MASTER,0,MAX_IR);i=0;
+        loop(frames,file_var(handle,l);nch==2?(file_var(handle,r);l=0.5*(l+r););
+          MASTER[i]=l;i+=1;);
+        master_len=frames;master_rate=rate;strcpy_fromslider(#ir_name,slider36);
+        avail/nch>frames?strcpy(#status,"IR loaded; truncated to 2 s / 131072 samples")
+                       :strcpy(#status,"IR loaded; stereo files summed to mono");
+        rebuild_pending=1;
+      ):strcpy(#status,"Empty IR; previous room retained");
+    ):strcpy(#status,"Use a mono or stereo audio IR; previous room retained");
+    file_close(handle);
+  );load_pending=0;
+);
+function build_convolution() local(i,pos,idx,frac,energy,scale,p,buf,j,src) (
+  memset(WORK,0,MAX_IR);
+  ir_len=min(min(MAX_IR,floor(2*srate)),max(1,floor(master_len*srate/master_rate)));
+  energy=0;i=0;
+  loop(ir_len,pos=i*master_rate/srate;idx=floor(pos);frac=pos-idx;
+    WORK[i]=MASTER[min(idx,master_len-1)]*(1-frac)+MASTER[min(idx+1,master_len-1)]*frac;
+    energy+=WORK[i]*WORK[i];i+=1;);
+  scale=slider21&&energy>0.000000000001?1/sqrt(energy):1;
+  i=0;loop(ir_len,WORK[i]*=scale;i+=1;);
+  i=0;loop(B,DIRECT[i]=WORK[B-1-i];i+=1;);
+  partitions=max(0,ceil(ir_len/B)-1);
+  memset(HSPEC,0,524288);memset(XSPEC,0,524288);p=0;
+  loop(partitions,buf=HSPEC+p*STRIDE;j=0;
+    loop(B,src=B+p*B+j;src<ir_len?buf[2*j]=WORK[src];j+=1;);
+    fft(buf,N);p+=1;);
+  memset(DHIST,0,512);memset(OUTBLOCK,0,256);memset(OVERLAP,0,256);
+  memset(FFTBUF,0,1024);memset(ACC,0,1024);
+  conv_pos=0;hist_pos=0;spectrum_slot=0;
+  normalization_previous=slider21;rebuild_pending=0;
+);
+function convolution_block() local(xbuf,p,xslot,hbuf,j) (
+  fft(FFTBUF,N);xbuf=XSPEC+spectrum_slot*STRIDE;memcpy(xbuf,FFTBUF,STRIDE);
+  memset(ACC,0,STRIDE);p=0;
+  loop(partitions,xslot=spectrum_slot-p;xslot<0?xslot+=partitions;
+    hbuf=HSPEC+p*STRIDE;memcpy(TEMP,XSPEC+xslot*STRIDE,STRIDE);
+    convolve_c(TEMP,hbuf,N);j=0;loop(STRIDE,ACC[j]+=TEMP[j];j+=1;);p+=1;);
+  ifft(ACC,N);j=0;
+  loop(B,OUTBLOCK[j]=ACC[2*j]/N+OVERLAP[j];OVERLAP[j]=ACC[2*(j+B)]/N;j+=1;);
+  spectrum_slot+=1;spectrum_slot>=max(1,partitions)?spectrum_slot=0;
+  memset(FFTBUF,0,STRIDE);
+);
+function convolution_sample(x) local(y) (
+  DHIST[hist_pos]=x;DHIST[hist_pos+B]=x;
+  y=mem_multiply_sum(DIRECT,DHIST+hist_pos+1,B)+OUTBLOCK[conv_pos];
+  hist_pos=(hist_pos+1)&255;FFTBUF[2*conv_pos]=x;conv_pos+=1;
+  conv_pos>=B?(convolution_block();conv_pos=0;);y;
+);
+function recalc() local(dt,ts,tau_a,tau_r,ref,os,omega,c,sn,alpha,a0) (
+  dt=1/srate;ref=10^(slider25/20);
+  m_pre=10^((slider5+(slider6?6:0))/20)/ref;
+  m_threshold=10^((slider23-1/(7-1))/20);ts=slider28/2.2;
+  tau_a=(slider8?0.0001:0.005)*ts;m_attack=1-exp(-dt/tau_a);
+  m_auto=slider9==3;tau_r=slider9==0?0.100:slider9==1?0.350:4.0;
+  m_release=exp(-dt/(tau_r*ts));m_kd1=dt/(0.083*slider28);
+  m_k12=dt/(0.020*slider28);m_k12b=dt/(0.020*10*slider28);
+  m_dist=0.004*slider24;m_clip=10^(17/20);
+  m_out=ref*(slider34?10^(-30.19/20):1)*10^(slider26/20);m_ceiling=10^(slider27/20);
+  t_in=10^(slider15/20);t_out=10^(slider16/20);os=slider18?2:1;
+  t_attack=exp(-1/(0.0001*srate*os));t_release=exp(-1/(0.100*srate*os));
+  slider18!=os_previous?(memset(XL,0,48);talk_wp=0;os_previous=slider18;);
+  gate_open_threshold=10^(slider12/20);gate_close_threshold=10^((slider12-slider13)/20);
+  gate_up=1/(slider10*0.001*srate);gate_down=1/(slider11*0.001*srate);
+  gate_floor=slider14<=-120?0:10^(slider14/20);detector_decay=exp(-1/(0.005*srate));
+  send_direct=dbgain(slider19);send_harm=dbgain(slider20);level_smooth=1-exp(-1/(0.010*srate));
+  level_target1=dbgain(macro_db(slider1,0));level_target2=dbgain(macro_db(slider2,-9));
+  level_target3=dbgain(macro_db(slider3,-3));level_target4=dbgain(macro_db(slider4,-15));
+  window_samples=0.008*srate;centerL=0.009*srate;centerR=0.018*srate;slap_samples=0.130*srate;
+  lfo_stepL=2*$pi*0.13/srate;lfo_stepR=2*$pi*0.173/srate;
+  omega=2*$pi*125/srate;c=cos(omega);sn=sin(omega);alpha=sn/(2*sqrt(0.5));a0=1+alpha;
+  hp_b0=(1+c)/(2*a0);hp_b1=-(1+c)/a0;hp_b2=hp_b0;hp_a1=-2*c/a0;hp_a2=(1-alpha)/a0;
+  pdc_delay=0;pdc_bot_ch=0;pdc_top_ch=10;
+);
+function reset_audio() (
+  memset(SL,0,262144);memset(XL,0,48);mdL.e1=mdL.e2=mdR.e1=mdR.e2=0;
+  talk_env=-100;talk_wp=0;os_previous=-1;hp_z1=hp_z2=0;
+  gate_detector=0;gate_state=0;gate_gain=0;
+  write_pos=0;headL=0.23;headR=0.67;lfoL=0;lfoR=1.37;last_sr=srate;rebuild_pending=1;
+  level1=dbgain(macro_db(slider1,0));level2=dbgain(macro_db(slider2,-9));
+  level3=dbgain(macro_db(slider3,-3));level4=dbgain(macro_db(slider4,-15));recalc();
+);
+function route_voice(l,r,dest) local(ch) (
+  dest==0||(dest>=5&&dest<=8)?(spl0+=l;spl1+=r;);
+  dest>=1&&dest<=4?ch=dest*2:ch=(dest-4)*2;
+  dest>=1&&dest<=8?(spl(ch)+=l;spl(ch+1)+=r;);
+);
+init_halfband();srate>0?(reset_audio();master_len<=0||master_rate<=0?builtin_room(););
+slider_show(slider36,slider35);
+
+@slider
+srate>0?recalc();
+slider36!=file_selection_previous?(load_pending=1;file_selection_previous=slider36;);
+slider_show(slider36,slider35);slider21!=normalization_previous?rebuild_pending=1;
+
+@serialize
+reading=file_avail(0)>=0;file_var(0,master_len);file_var(0,master_rate);file_string(0,#ir_name);
+master_len=min(MAX_IR,max(0,master_len));file_mem(0,MASTER,master_len);
+reading?(rebuild_pending=1;strcpy(#status,"Embedded project IR restored"););
+
+@block
+srate!=last_sr?reset_audio();mini_gr=0;talk_gr=0;output_peak=0;
+builtin_pending&&!(play_state&1)?(builtin_room();builtin_pending=0;strcpy(#status,"Built-in synthetic room restored"););
+load_pending&&!(play_state&1)?load_ir();
+(load_pending||builtin_pending)&&(play_state&1)?strcpy(#status,"Stop transport to load the queued IR");
+rebuild_pending?(master_len<=0||master_rate<=0?builtin_room();build_convolution(););recalc();
+
+@sample
+mini_process(spl0,spl1);
+SL[write_pos]=compL;SR[write_pos]=compR;HL[write_pos]=compL;HR[write_pos]=compR;
+slapL=delay_read(SL,slap_samples);slapR=delay_read(SR,slap_samples);
+ratioL=exp((-6+sin(lfoL))*log(2)/1200);ratioR=exp((6+sin(lfoR))*log(2)/1200);
+headL+=(1-ratioL)/window_samples;headL-=floor(headL);
+headR+=(1-ratioR)/window_samples;headR-=floor(headR);
+harmL=shifted_voice(HL,centerL,headL);harmR=shifted_voice(HR,centerR,headR);
+lfoL+=lfo_stepL;lfoL>=2*$pi?lfoL-=2*$pi;lfoR+=lfo_stepR;lfoR>=2*$pi?lfoR-=2*$pi;
+room_input=0.5*(compL+compR)*send_direct+0.5*(harmL+harmR)*send_harm;
+room=convolution_sample(room_input);hp=hp_b0*room+hp_z1;
+hp_z1=hp_b1*room-hp_a1*hp+hp_z2;hp_z2=hp_b2*room-hp_a2*hp;room=talk_process(hp);
+gate_detector=max(max(abs(compL),abs(compR)),gate_detector*detector_decay);
+gate_state?(gate_detector<gate_close_threshold?gate_state=0;)
+          :(gate_detector>=gate_open_threshold?gate_state=1;);
+gate_state?gate_gain=min(1,gate_gain+gate_up):gate_gain=max(0,gate_gain-gate_down);
+slider29?gate_multiplier=1:gate_multiplier=gate_floor+(1-gate_floor)*gate_gain;room*=gate_multiplier;
+level1+=(level_target1-level1)*level_smooth;level2+=(level_target2-level2)*level_smooth;
+level3+=(level_target3-level3)*level_smooth;level4+=(level_target4-level4)*level_smooth;
+spl0=spl1=spl2=spl3=spl4=spl5=spl6=spl7=spl8=spl9=0;
+route_voice(compL*level1,compR*level1,slider30);route_voice(slapL*level2,slapR*level2,slider31);
+route_voice(harmL*level3,harmR*level3,slider32);route_voice(room*level4,room*level4,slider33);
+output_peak=max(output_peak,max(abs(spl0),abs(spl1)));write_pos=(write_pos+1)&65535;
+
+@gfx 900 862
+function build_metal_tile() local(x,y,n,rn,base) (
+  gfx_setimgdim(1,256,256);gfx_dest=1;y=0;
+  loop(256,rn=sin(y*4.1414)*43758.5453;rn-=floor(rn);x=0;
+    loop(256,n=sin(x*12.9898+y*78.233)*43758.5453;n-=floor(n);
+      base=0.20+(n-0.5)*0.045+(rn-0.5)*0.012;
+      gfx_x=x;gfx_y=y;gfx_setpixel(base,base,base);x+=1;);y+=1;);
+  gfx_dest=-1;
+);
+function draw_metal_panel() local(x,y,i,top,bottom) (
+  !metal_tile_ready?(build_metal_tile();metal_tile_ready=1;);
+  gfx_set(1,1,1,1);y=0;
+  loop(ceil(gfx_h/256),x=0;
+    loop(ceil(gfx_w/256),gfx_x=x*256;gfx_y=y*256;gfx_blit(1,1,0);x+=1;);y+=1;);
+  i=0;loop(64,top=floor(i*gfx_h/64);bottom=floor((i+1)*gfx_h/64);
+    gfx_set(0,0,0,0.20*i/63);gfx_rect(0,top,gfx_w,bottom-top);i+=1;);
+  gfx_set(1,1,1,0.14);gfx_rect(0,0,gfx_w,1);gfx_rect(0,0,1,gfx_h);
+  gfx_set(0,0,0,0.48);gfx_rect(0,gfx_h-1,gfx_w,1);gfx_rect(gfx_w-1,0,1,gfx_h);gfx_a=1;
+);
+function rect(x,y,w,h) (gfx_rect(gx+x*gs,gy+y*gs,w*gs,h*gs););
+function text_at(str,x,y) (gfx_x=gx+x*gs;gfx_y=gy+y*gs;gfx_drawstr(str););
+function centered(str,x,y) local(w,h) (
+  gfx_measurestr(str,w,h);gfx_x=gx+x*gs-w/2;gfx_y=gy+y*gs;gfx_drawstr(str);
+);
+function hit(x,y,w,h) (ui_x>=x&&ui_x<x+w&&ui_y>=y&&ui_y<y+h;);
+function section(str,y) (
+  gfx_set(0,0,0,0.55);rect(20,y,860,1);
+  gfx_set(1,1,1,0.12);rect(20,y+1,860,1);
+  gfx_set(0.78,0.81,0.84,1);text_at(str,25,y+7);
+);
+function notify(id) (sliderchange(2^(id-1));slider_automate(2^(id-1)););
+function def_knob(id,mn,mx,step,df,lg) (
+  UMIN[id]=mn;UMAX[id]=mx;USTEP[id]=step;UDEF[id]=df;ULOG[id]=lg;
+);
+function knob_norm(id,v) (
+  ULOG[id]?log(v/UMIN[id])/log(UMAX[id]/UMIN[id]):(v-UMIN[id])/(UMAX[id]-UMIN[id]);
+);
+function knob_value(id,n) local(v) (
+  n=max(0,min(1,n));
+  v=ULOG[id]?UMIN[id]*exp(n*log(UMAX[id]/UMIN[id])):UMIN[id]+n*(UMAX[id]-UMIN[id]);
+  v=UMIN[id]+floor((v-UMIN[id])/USTEP[id]+0.5)*USTEP[id];max(UMIN[id],min(UMAX[id],v));
+);
+function main_label(str,x,y,r) local(w,h,fs,target) (
+  fs=max(10,floor(30*gs));gfx_setfont(3,"Arial",fs,'b');gfx_measurestr(str,w,h);
+  target=2*r*1.3*gs;
+  fs=max(8,floor(fs*min(1,target/max(1,w))));
+  gfx_setfont(3,"Arial",fs,'b');
+  gfx_set(0,0,0,0.55);centered(str,x+0.5,y+1);
+  gfx_set(0.90,0.91,0.92,1);centered(str,x,y);
+  gfx_setfont(1);
+);
+function knob(id,x,y,r,label,unit,cr,cg,cb) local(dx,dy,n,v,a,now,i,t) (
+  dx=ui_x-x;dy=ui_y-y;v=slider(id);n=max(0,min(1,knob_norm(id,v)));now=time_precise();
+  ui_click&&dx*dx+dy*dy<r*r*1.6?(
+    ui_last_id==id&&now-ui_last_time<0.35?(
+      slider(id)=UDEF[id];notify(id);ui_drag=0;ui_last_id=0;
+    ):(ui_drag=id;ui_drag_y=ui_y;ui_drag_n=n;ui_last_id=id;ui_last_time=now;);
+  );
+  ui_drag==id&&(mouse_cap&1)?(
+    n=ui_drag_n+(ui_drag_y-ui_y)*((mouse_cap&8)?0.0007:0.004);v=knob_value(id,n);
+    v!=slider(id)?(slider(id)=v;notify(id););n=max(0,min(1,knob_norm(id,slider(id))));
+  );
+  dx*dx+dy*dy<r*r*1.6&&mouse_wheel!=0?(
+    v=slider(id)+(mouse_wheel>0?1:-1)*USTEP[id]*((mouse_cap&8)?1:5);
+    slider(id)=max(UMIN[id],min(UMAX[id],v));notify(id);mouse_wheel=0;
+    n=max(0,min(1,knob_norm(id,slider(id))));
+  );
+  gfx_set(0.78,0.78,0.78,1);i=0;
+  loop(11,t=0.75*$pi+i*0.15*$pi;
+    gfx_circle(gx+(x+cos(t)*r*1.3)*gs,gy+(y+sin(t)*r*1.3)*gs,max(1,r*0.06*gs),1,1);i+=1;);
+  gfx_set(0,0,0,0.42);gfx_circle(gx+(x+r*0.10)*gs,gy+(y+r*0.20)*gs,(r+2)*gs,1,1);
+  gfx_set(0.035,0.035,0.04,1);gfx_circle(gx+x*gs,gy+y*gs,(r+1.5)*gs,1,1);
+  gfx_set(0.57,0.59,0.61,1);gfx_circle(gx+x*gs,gy+y*gs,(r+0.5)*gs,1,1);
+  gfx_set(cr*0.55,cg*0.55,cb*0.55,1);gfx_circle(gx+x*gs,gy+y*gs,(r-0.5)*gs,1,1);
+  gfx_set(cr,cg,cb,1);gfx_circle(gx+x*gs,gy+y*gs,r*0.88*gs,1,1);
+  gfx_set(1,1,1,0.16);gfx_circle(gx+(x-r*0.18)*gs,gy+(y-r*0.24)*gs,r*0.55*gs,1,1);
+  gfx_set(0,0,0,0.16);gfx_circle(gx+(x+r*0.22)*gs,gy+(y+r*0.28)*gs,r*0.5*gs,1,1);
+  a=0.75*$pi+n*1.5*$pi;gfx_set(0.98,0.98,0.97,1);
+  gfx_line(gx+(x+cos(a)*r*0.20)*gs,gy+(y+sin(a)*r*0.20)*gs,
+           gx+(x+cos(a)*r*0.94)*gs,gy+(y+sin(a)*r*0.94)*gs,1);
+  id<=4?main_label(label,x,y-r-45,r):(
+    gfx_set(0.86,0.88,0.90,1);centered(label,x,y-r-28);
+    sprintf(#value,"%.1f %s",slider(id),unit);centered(#value,x,y+r+17);
+  );
+);
+function button(x,y,w,h,label,on) local(clicked,i,c) (
+  clicked=ui_click&&hit(x,y,w,h);gfx_set(0,0,0,0.45);rect(x-1,y-1,w+3,h+3);
+  i=0;loop(h,c=on?0.19+0.08*i/h:0.34-0.13*i/h;
+    gfx_set(c,c*1.02,c*1.05,1);rect(x,y+i,w,1);i+=1;);
+  on?gfx_set(0,0,0,0.35):gfx_set(1,1,1,0.22);rect(x,y,w,1);
+  gfx_set(0,0,0,0.4);rect(x,y+h-1,w,1);
+  gfx_set(0.85,0.89,0.91,1);centered(label,x+w/2,y+(h-14)/2);clicked;
+);
+function toggle(id,x,y,w,label) local(on) (
+  on=slider(id);button(x,y,w,28,label,on)?(slider(id)=1-on;notify(id););
+);
+function menu_control(id,x,y,w,label,items) local(choice) (
+  strcpy_fromslider(#selection,id);sprintf(#menu_label,"%s: %s",label,#selection);
+  button(x,y,w,28,#menu_label,0)?(
+    gfx_x=gx+x*gs;gfx_y=gy+(y+28)*gs;choice=gfx_showmenu(items);
+    choice>0?(slider(id)=choice-1;notify(id););
+  );
+);
+!ui_initialized?(
+  UMIN=2000;UMAX=2100;USTEP=2200;UDEF=2300;ULOG=2400;
+  def_knob(1,-10,10,0.01,0,0);def_knob(2,-10,10,0.01,0,0);
+  def_knob(3,-10,10,0.01,0,0);def_knob(4,-10,10,0.01,0,0);
+  def_knob(5,-25,25,0.1,12,0);
+  def_knob(10,0.1,50,0.1,1,1);def_knob(11,1,2000,1,250,1);
+  def_knob(12,-120,0,0.1,-80,0);def_knob(13,0,12,0.1,3,0);def_knob(14,-120,0,1,-120,0);
+  def_knob(15,0,30,0.1,18,0);def_knob(16,-20,20,0.1,0,0);
+  def_knob(19,-90,12,0.1,-6,0);def_knob(20,-90,12,0.1,-12,0);
+  def_knob(23,-10,8,0.1,0,0);def_knob(24,0,10,0.01,1,0);
+  def_knob(25,-36,0,0.1,-15,0);def_knob(26,-24,24,0.1,-6,0);
+  def_knob(27,-25,0,0.1,0,0);def_knob(28,0.25,4,0.01,1,1);
+  strcpy(#route_menu,"Main 1-2|Pair 3-4|Pair 5-6|Pair 7-8|Pair 9-10|Main + 3-4|Main + 5-6|Main + 7-8|Main + 9-10|Off");
+  ui_initialized=1;
+);
+gfx_clear=0x303030;draw_metal_panel();gfx_getchar();
+canvas_h=slider35?862:230;
+gs=min(gfx_w/900,gfx_h/canvas_h);gx=(gfx_w-900*gs)/2;gy=(gfx_h-canvas_h*gs)/2;
+ui_x=(mouse_x-gx)/gs;ui_y=(mouse_y-gy)/gs;
+ui_click=(mouse_cap&1)&&!(ui_prev_cap&1);
+gfx_setfont(1,"Arial",max(9,13*gs));
+(mouse_cap&2)&&!(ui_prev_cap&2)?(
+  gfx_x=mouse_x;gfx_y=mouse_y;
+  sprintf(#context_menu,"%sAdvanced controls|Set track to 10 channels",slider35?"!":"");
+  context_choice=gfx_showmenu(#context_menu);
+  context_choice==1?(slider35=1-slider35;notify(35);slider_show(slider36,slider35););
+  context_choice==2?set_host_numchan(10);
+);
+knob(1,150,93,40,"VOCAL","",0.25,0.40,0.52);
+knob(2,350,93,40,"DELAY","",0.60,0.39,0.22);
+knob(3,550,93,40,"DOUBLER","",0.31,0.49,0.36);
+knob(4,750,93,40,"ROOM","",0.62,0.27,0.24);
+// Same Impact face and layered badge treatment as the supplied MINI-LIMITER.
+gfx_setfont(4,"Impact",max(10,floor(44*gs+0.5)));
+gfx_set(0.03,0.03,0.03,0.95);centered("Collinsizer",449,171);
+gfx_set(0.85,0.85,0.85,0.90);centered("Collinsizer",450,170);
+gfx_setfont(1);
+slider35?(
+  mini_gr_display=max(mini_gr,mini_gr_display*0.92);
+  talk_gr_display=max(talk_gr,talk_gr_display*0.92);
+  output_peak_display=max(output_peak,output_peak_display*0.90);
+  sprintf(#meters,"Mini GR %.1f dB    Talkback GR %.1f dB    Gate %s    Main peak %.1f dBFS",
+    mini_gr_display,talk_gr_display,gate_state?"OPEN":"CLOSED",20*log10(max(output_peak_display,0.000000001)));
+  output_peak_display>1?gfx_set(1,0.3,0.25,1):gfx_set(0.73,0.77,0.79,1);text_at(#meters,25,228);
+  section("GATE - key: post Mini, pre volume; hold fixed at zero",260);
+  knob(10,85,327,23,"ATTACK","ms",0.28,0.35,0.40);
+  knob(11,225,327,23,"RELEASE","ms",0.28,0.35,0.40);
+  knob(12,365,327,23,"THRESHOLD","dB",0.28,0.35,0.40);
+  knob(13,505,327,23,"HYSTERESIS","dB",0.28,0.35,0.40);
+  knob(14,645,327,23,"CLOSED LEVEL","dB",0.28,0.35,0.40);
+  toggle(29,755,314,125,"Gate bypass");
+  section("MONO ROOM - choose an IR in the native dropdown above; load with transport stopped",384);
+  gfx_set(0.75,0.78,0.80,1);gfx_x=gx+25*gs;gfx_y=gy+412*gs;
+  gfx_drawstr(#ir_name,0,gx+600*gs,gy+432*gs);
+  button(610,405,125,28,"Load selected",0)?load_pending=1;
+  button(750,405,130,28,"Built-in room",0)?builtin_pending=1;
+  gfx_set(0.70,0.74,0.77,1);text_at(#status,25,438);
+  knob(15,100,510,23,"TALKBACK DRIVE","dB",0.45,0.26,0.24);
+  knob(16,275,510,23,"TALKBACK OUT","dB",0.45,0.26,0.24);
+  knob(19,450,510,23,"VOCAL > ROOM","dB",0.28,0.37,0.40);
+  knob(20,625,510,23,"DOUBLER > ROOM","dB",0.28,0.37,0.40);
+  toggle(17,740,469,140,"Talkback IN");toggle(18,740,503,140,"Talkback 2x");
+  toggle(21,740,537,140,"IR normalize");
+  section("A&H MINI LIMITER - original supplied DSP",572);
+  knob(5,65,643,21,"INPUT","dB",0.30,0.36,0.40);
+  knob(23,190,643,21,"THRESH TRIM","dBm",0.30,0.36,0.40);
+  knob(26,315,643,21,"OUT TRIM","dB",0.30,0.36,0.40);
+  knob(27,440,643,21,"CEILING","dB",0.30,0.36,0.40);
+  knob(28,565,643,21,"TIMING","x",0.30,0.36,0.40);
+  knob(24,690,643,21,"FET COLOR","x",0.30,0.36,0.40);
+  knob(25,815,643,21,"ALIGNMENT","dB",0.30,0.36,0.40);
+  menu_control(6,25,697,135,"Input","Line|Mic");toggle(7,168,697,130,"Mini IN");
+  menu_control(8,306,697,135,"Attack","Slow 5ms|Fast 100us");
+  menu_control(9,449,697,135,"Decay","Fast 100ms|Medium 350ms|Slow 4s|Auto");
+  toggle(22,592,697,130,"Stereo link");menu_control(34,730,697,150,"Tap","0 dBm|-30 dBm");
+  section("OUTPUT DESTINATIONS - post volume; Off does not disable internal sends",739);
+  menu_control(30,25,767,415,"Vocal",#route_menu);menu_control(31,465,767,415,"Delay",#route_menu);
+  menu_control(32,25,804,415,"Doubler",#route_menu);menu_control(33,465,804,415,"Room",#route_menu);
+  gfx_set(0.70,0.74,0.77,1);text_at("Right-click to close Advanced. IR limit: 2 s / 131072 samples. No master safety limiter.",25,844);
+);
+!(mouse_cap&1)?ui_drag=0;ui_prev_cap=mouse_cap;mouse_wheel=0;
