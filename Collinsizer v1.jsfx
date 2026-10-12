@@ -16,9 +16,9 @@ slider8:0<0,1,1{Slow 5ms,Fast 100us}>-Mini attack
 slider9:0<0,3,1{Fast 100ms,Medium 350ms,Slow 4s,Auto}>-Mini decay
 slider10:1<0.1,50,0.1>-Gate attack (ms)
 slider11:250<1,2000,1>-Gate release (ms)
-slider12:-80<-120,0,0.1>-Gate opening threshold (dBFS)
+slider12:-50<-120,0,0.1>-Gate opening threshold (dBFS)
 slider13:3<0,12,0.1>-Gate hysteresis (dB)
-slider14:-120<-120,0,1>-Gate closed attenuation (dB; -120=silence)
+slider14:-60<-120,0,1>-Gate closed attenuation (dB; -120=silence)
 slider15:18<0,30,0.1>-Talkback drive (dB)
 slider16:0<-20,20,0.1>-Talkback output (dB)
 slider17:1<0,1,1{Out,In}>-Talkback compressor
@@ -411,7 +411,7 @@ function menu_control(id,x,y,w,label,items) local(choice) (
   def_knob(3,-10,10,0.01,0,0);def_knob(4,-10,10,0.01,0,0);
   def_knob(5,-25,25,0.1,12,0);
   def_knob(10,0.1,50,0.1,1,1);def_knob(11,1,2000,1,250,1);
-  def_knob(12,-120,0,0.1,-80,0);def_knob(13,0,12,0.1,3,0);def_knob(14,-120,0,1,-120,0);
+  def_knob(12,-120,0,0.1,-50,0);def_knob(13,0,12,0.1,3,0);def_knob(14,-120,0,1,-60,0);
   def_knob(15,0,30,0.1,18,0);def_knob(16,-20,20,0.1,0,0);
   def_knob(19,-90,12,0.1,-6,0);def_knob(20,-90,12,0.1,-12,0);
   def_knob(23,-10,8,0.1,0,0);def_knob(24,0,10,0.01,1,0);
