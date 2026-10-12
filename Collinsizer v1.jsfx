@@ -72,6 +72,22 @@ strcpy(#status,"Ready - built-in room");
 function dbgain(db) (db<=-90?0:exp(db*log(10)/20););
 function macro_db(v,center) (
   v=max(-10,min(10,v));
+
+  v>=0 ? (
+    // Above noon: keep the existing boost range.
+    center+(v/10)*(12-center);
+  ) : (
+    center==0 ? (
+      // Vocal: keep its existing reduction taper.
+      center+(v/10)*(center+90);
+    ) : (
+      // Delay, Doubler and Room: gradual amplitude fade.
+      v<=-10 ? -90
+             : max(-90,center+20*log10(1+v/10));
+    );
+  );
+); (
+  v=max(-10,min(10,v));
   v>=0 ? center+(v/10)*(12-center) : center+(v/10)*(center+90);
 );
 function soft_tanh(x) local(e) (
