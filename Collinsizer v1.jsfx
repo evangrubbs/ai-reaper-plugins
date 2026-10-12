@@ -259,12 +259,12 @@ function route_voice(l,r,dest) local(ch) (
   dest>=1&&dest<=8?(spl(ch)+=l;spl(ch+1)+=r;);
 );
 init_halfband();srate>0?(reset_audio();master_len<=0||master_rate<=0?builtin_room(););
-slider_show(slider36,slider35);
+slider_show(slider36,1);
 
 @slider
 srate>0?recalc();
 slider36!=file_selection_previous?(load_pending=1;file_selection_previous=slider36;);
-slider_show(slider36,slider35);slider21!=normalization_previous?rebuild_pending=1;
+slider_show(slider36,1);slider21!=normalization_previous?rebuild_pending=1;
 
 @serialize
 reading=file_avail(0)>=0;file_var(0,master_len);file_var(0,master_rate);file_string(0,#ir_name);
@@ -430,7 +430,7 @@ gfx_setfont(1,"Arial",max(9,13*gs));
   gfx_x=mouse_x;gfx_y=mouse_y;
   sprintf(#context_menu,"%sAdvanced controls|Set track to 10 channels",slider35?"!":"");
   context_choice=gfx_showmenu(#context_menu);
-  context_choice==1?(slider35=1-slider35;notify(35);slider_show(slider36,slider35););
+  context_choice==1?(slider35=1-slider35;notify(35);slider_show(slider36,1););
   context_choice==2?set_host_numchan(10);
 );
 knob(1,150,93,40,"VOCAL","",0.25,0.40,0.52);
@@ -442,6 +442,16 @@ gfx_setfont(4,"Impact",max(10,floor(44*gs+0.5)));
 gfx_set(0.03,0.03,0.03,0.95);centered("Collinsizer",449,171);
 gfx_set(0.85,0.85,0.85,0.90);centered("Collinsizer",450,170);
 gfx_setfont(1);
+// Bottom-right Advanced toggle.
+advanced_button_y = slider35 ? canvas_h-25 : canvas_h-31;
+
+button(775,advanced_button_y,105,28,"Advanced",slider35) ? (
+  slider35=1-slider35;
+  notify(35);
+);
+
+slider_show(slider36,1);
+
 slider35?(
   mini_gr_display=max(mini_gr,mini_gr_display*0.92);
   talk_gr_display=max(talk_gr,talk_gr_display*0.92);
@@ -483,6 +493,6 @@ slider35?(
   section("OUTPUT DESTINATIONS - post volume; Off does not disable internal sends",739);
   menu_control(30,25,767,415,"Vocal",#route_menu);menu_control(31,465,767,415,"Delay",#route_menu);
   menu_control(32,25,804,415,"Doubler",#route_menu);menu_control(33,465,804,415,"Room",#route_menu);
-  gfx_set(0.70,0.74,0.77,1);text_at("Right-click to close Advanced. IR limit: 2 s / 131072 samples. No master safety limiter.",25,844);
+  gfx_set(0.70,0.74,0.77,1);text_at("IR limit: 2 s / 131072 samples. No master safety limiter.",25,844);
 );
 !(mouse_cap&1)?ui_drag=0;ui_prev_cap=mouse_cap;mouse_wheel=0;
