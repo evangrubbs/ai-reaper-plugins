@@ -1,0 +1,225 @@
+# Collinsizer v1
+
+ReadMe written by AI
+
+An AI-assisted vocal effects strip for REAPER, combining compression, slapback delay, stereo doubling, and gated mono room reverb in one JSFX.
+
+The main panel keeps things simple: four noon-centered controls, a metallic background, and no numerical readouts or meters. Right-click the panel to access advanced settings.
+
+## Features
+
+- Vocal compression based on the custom Mini Limiter script.
+- 130 ms slapback delay with no feedback.
+- Stereo doubler with opposite detuning and independent pitch movement.
+- Mono room convolution reverb with a built-in synthetic room.
+- 125 Hz high-pass filter on the room signal.
+- Mono talkback-style limiter followed by a gate.
+- Gate keyed from the main compressor output.
+- Optional separate outputs for each effect branch.
+- Support for loading custom mono or stereo IR files.
+
+## Requirements
+
+- REAPER 6.74 or newer.
+- No additional plugins required.
+- No external IR required for the default room sound.
+
+## Installation
+
+1. In REAPER, open **Options → Show REAPER resource path in explorer/finder**.
+2. Copy `Collinsizer v1.jsfx` into the resource `Effects` folder.
+3. Refresh the FX browser or restart REAPER.
+4. Search for `Collinsizer` and add it to a track.
+
+Keep REAPER’s own FX wet control at 100% to use the plugin’s intended internal mix.
+
+The built-in room works even if you do not install the optional WAV.
+
+## Main Controls
+
+All four controls default to noon. Their host parameter values run from −10 to +10; these values are macros, not decibels.
+
+| Control | Sound | Level at noon |
+|---|---|---:|
+| Vocal | Compressed direct signal | 0 dB |
+| Delay | 130 ms slapback | −9 dB |
+| Doubler | Stereo microshift | −3 dB |
+| Room | Gated mono room reverb | −15 dB |
+
+Turning a control fully left mutes that branch. Turning it fully right reaches its maximum output gain of +12 dB.
+
+Each control uses separate scaling below and above noon, preserving the default mix while allowing access to its full gain range.
+
+### Mouse Controls
+
+- Drag a knob vertically to adjust it.
+- Hold Shift while dragging for finer adjustment.
+- Use the mouse wheel over a knob to adjust it.
+- Double-click a main knob to return it to noon.
+- Right-click anywhere on the panel to open or close Advanced controls.
+
+## Signal Flow
+
+The Mini Limiter processes the input before it feeds the four branches:
+
+```text
+Input → Mini Limiter
+         │
+         ├── Vocal level → Output
+         │
+         ├── 130 ms slapback → Delay level → Output
+         │
+         ├── Stereo doubler → Doubler level → Output
+         │          │
+         │          └── Mono room send ──┐
+         │                              │
+         ├── Direct mono room send ─────┤
+         │                              ▼
+         │                          Mono room IR
+         │                              │
+         │                       125 Hz high-pass
+         │                              │
+         │                       Talkback limiter
+         │                              │
+         └── Gate sidechain ─────────► Gate
+                                        │
+                                     Room level
+                                        │
+                                      Output
+```
+
+There is no additional uncompressed direct signal in the output.
+
+The room sends are independent of the main level knobs. Turning down Vocal or Doubler does not remove that source from its separate room send.
+
+## Stereo Doubler
+
+- Left base detune: −6 cents.
+- Right base detune: +6 cents.
+- Independent ±1-cent sinusoidal movement on each side.
+- Modulation rates: 0.13 Hz left and 0.173 Hz right.
+- Nominal delay centers: 9 ms left and 18 ms right.
+
+Pitch shifting uses crossfaded moving delay taps. Actual tap delays span 5–13 ms on the left and 14–22 ms on the right; the 9/18 ms settings are centers, not fixed delays.
+
+Stereo input channels remain separate. For mono use, feed the source to both input channels.
+
+This is an original microshift implementation, not a verified emulation of a commercial harmonizer.
+
+## Mono Room Reverb
+
+The room receives a mono blend of the compressed source and the stereo doubler. Each stereo source is summed using `(L + R) / 2`.
+
+The complete room chain is mono:
+
+```text
+Mono IR → 125 Hz high-pass → Talkback limiter → Gate
+```
+
+The room output is sent identically to both channels of its selected output pair, placing it in the center.
+
+### Built-In Room
+
+The default room is generated synthetically inside the plugin. It is not a measured acoustic-room IR.
+
+### Custom IRs
+
+1. Put your IR files in: REAPER resource folder/Data/ParallelRoomIR/
+2. Open Advanced controls.
+3. Choose a file using the native Room IR dropdown above the custom panel.
+4. Stop playback to allow the queued file to load.
+
+The **Load selected** button reloads the selected file. **Built-in room** restores the internal synthetic room.
+
+- Mono and stereo files are supported.
+- Stereo IRs are summed to mono.
+- REAPER’s file loader resamples loaded IRs to the project sample rate.
+- Length is limited to the shorter of 2 seconds or 131,072 samples.
+- IR energy normalization is enabled by default.
+- Loaded mono IR samples are embedded in saved project/plugin state.
+
+Energy normalization uses the sum of squared samples; it is not peak normalization.
+
+IR loading and rebuilding are synchronous and clear the convolution history. Stop playback before replacing an IR or changing normalization. Short room IRs around 0.3–0.5 seconds are a good starting point for CPU testing.
+
+If newly added files do not appear in the dropdown, reopen the effect or restart REAPER.
+
+## Gate
+
+The gate listens to the Mini Limiter output before the Vocal level control and affects only the room signal.
+
+| Setting | Default |
+|---|---:|
+| Attack | 1 ms |
+| Hold | 0 ms |
+| Release | 250 ms |
+| Opening threshold | −80 dBFS |
+| Hysteresis | 3 dB |
+| Fully closed output | Silence |
+
+Attack, release, threshold, hysteresis, and closed attenuation are adjustable in Advanced. Hold is fixed at zero.
+
+The detector uses a 5 ms peak decay. Closing begins when its envelope crosses the closing threshold, not necessarily at the final nonzero input sample.
+
+Adjust the threshold to suit the noise level of your recording.
+
+## Advanced Controls
+
+Advanced includes:
+
+- Mini Limiter input, timing, linking, coloration, and output settings.
+- Talkback limiter drive, output, bypass, and oversampling.
+- Gate controls.
+- Separate Vocal-to-Room and Doubler-to-Room send levels.
+- IR selection and normalization.
+- Branch output destinations.
+- Gain-reduction and main-output metering.
+
+Resize the FX window if the advanced controls are too small.
+
+## Separate Outputs
+
+Each branch can be routed to:
+
+- Main outputs 1–2.
+- Outputs 3–4, 5–6, 7–8, or 9–10.
+- Main plus one selected auxiliary pair.
+- Off.
+
+All branches default to Main 1–2. Multiple branches assigned to the same pair are summed.
+
+Right-click the panel and select **Set track to 10 channels** when using auxiliary outputs. Check the FX output pin mappings and use REAPER track sends to route the pairs to separate tracks.
+
+Routing is after the branch’s main level control. Routing a branch to Off does not disable its internal room send.
+
+Avoid accidentally recombining Main and auxiliary duplicates unless you intend the resulting level increase.
+
+## Latency and Output Levels
+
+The convolution engine uses a direct FIR head and partitioned FFT tail to avoid uniform-convolution block-buffering delay.
+
+Global reported PDC is zero. Intentional slapback, doubler, and IR onset delays remain part of the effect.
+
+Talkback 2× oversampling retains a 15-sample delay within the room branch only.
+
+There is no master safety limiter. Monitor the main and auxiliary output levels, particularly when increasing the main controls above noon. The plugin’s peak meter covers Main 1–2 only.
+
+## Development and Testing
+
+Collinsizer was developed with AI assistance, incorporating custom AI-assisted Mini Limiter and Talkback scripts.
+
+Offline checks cover macro endpoints, monotonicity, noon-pointer calculations, reset defaults, panel-content guards, knob spacing, code delimiters, slider IDs, and FFT memory boundaries.
+
+Those checks do not replace compilation, listening tests, CPU testing, or project-recall testing inside REAPER. The generated build was not compiled or auditioned in REAPER by the AI assistant.
+
+If you encounter a problem, include your REAPER version, operating system, sample rate, and any exact error message when reporting it.
+
+## Credits
+
+- Collinsizer integration, routing, convolution, gate, and macro controls developed with AI assistance.
+
+This project is not affiliated with or endorsed by Allen & Heath, Solid State Logic, or Eventide.
+
+## License
+
+See the repository’s `LICENSE` file for distribution and reuse terms.
