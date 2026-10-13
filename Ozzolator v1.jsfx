@@ -1,0 +1,1065 @@
+desc:Ozz-o-lator v1.0 
+// Ozz-o-lator - by Perplexity and Evan Grubbs
+// Based on Ozzy's live sound
+
+version:1
+options:maxmem=2097152
+
+slider1:0<-24,24,0.1>-Input level
+slider2:0<-24,24,0.1>-Master output trim
+slider3:0<0,1,1>-Bypass entire chain
+
+slider4:160<20,1000,1>-Input EQ HP Hz
+slider5:200<20,20000,1>-Input EQ cut 1 Hz
+slider6:-11<-24,12,0.1>-Input EQ cut 1 dB
+slider7:7.9<0.5,100,0.01>-Input EQ cut 1 Q
+slider8:561<20,20000,1>-Input EQ cut 2 Hz
+slider9:-4.5<-24,12,0.1>-Input EQ cut 2 dB
+slider10:7<0.5,100,0.01>-Input EQ cut 2 Q
+slider11:1224<20,20000,1>-Input EQ cut 3 Hz
+slider12:-9<-24,12,0.1>-Input EQ cut 3 dB
+slider13:85<0.5,100,0.01>-Input EQ cut 3 Q
+
+slider14:200<20,1000,1>-Channel HP Hz
+slider15:10100<1000,22000,1>-Channel LP Hz
+slider16:4100<200,16000,1>-Channel HMF Hz
+slider17:-2.7<-18,18,0.1>-Channel HMF dB
+slider18:1.5<0.25,8,0.01>-Channel HMF Q
+slider19:600<40,8000,1>-Channel LMF Hz
+slider20:-4<-18,18,0.1>-Channel LMF dB
+slider21:2<0.25,8,0.01>-Channel LMF Q
+slider22:161<20,1000,1>-Channel LF Hz
+slider23:-6<-18,18,0.1>-Channel LF dB
+slider24:0<0,1,1>-Channel LF shelf
+slider25:1<0.25,4,0.01>-Channel Q calibration
+
+slider26:4<1,20,0.1>-Channel ratio
+slider27:0<-40,20,0.1>-Channel threshold reference dB
+slider28:400<10,2000,1>-Channel release ms
+slider29:10<0.1,100,0.1>-Channel attack ms
+slider30:-18<-36,0,0.1>-Channel reference offset dB
+slider31:0<0,24,0.1>-Channel makeup dB
+
+slider32:248<20,1000,1>-Band crossover 1 Hz
+slider33:1901<500,5000,1>-Band crossover 2 Hz
+slider34:5661<2000,18000,1>-Band crossover 3 Hz
+slider35:0.75<0.5,2,0.01>-Crossover Q
+
+slider36:-60<-80,0,0.1>-Low threshold dB
+slider37:-6<-18,18,0.1>-Low gain dB
+slider38:-6<-24,0,0.1>-Low range dB
+slider39:2<0.1,100,0.01>-Low attack ms
+slider40:5<1,1000,0.1>-Low release base ms
+slider41:-38.3<-80,0,0.1>-Low mid threshold dB
+slider42:-2<-18,18,0.1>-Low mid gain dB
+slider43:-1<-24,0,0.1>-Low mid range dB
+slider44:2<0.1,100,0.01>-Low mid attack ms
+slider45:5<1,1000,0.1>-Low mid release base ms
+slider46:-32.2<-80,0,0.1>-High mid threshold dB
+slider47:0<-18,18,0.1>-High mid gain dB
+slider48:-6<-24,0,0.1>-High mid range dB
+slider49:0.5<0.1,100,0.01>-High mid attack ms
+slider50:5<1,1000,0.1>-High mid release base ms
+slider51:-41.5<-80,0,0.1>-High threshold dB
+slider52:5<-18,18,0.1>-High gain dB
+slider53:-6<-24,0,0.1>-High range dB
+slider54:0.52<0.1,100,0.01>-High attack ms
+slider55:5<1,1000,0.1>-High mid release base ms
+
+slider56:-79.9<-100,0,0.1>-Vocal gate threshold dB
+slider57:-12<-36,0,0.1>-Vocal compression
+slider58:-3<-36,0,0.1>-Vocal limiter ceiling dB
+slider59:3<0.1,50,0.1>-Vocal attack ms
+slider60:120<20,1000,1>-Vocal release ms
+slider61:18<1,30,0.1>-Vocal knee dB
+
+slider62:-40<-80,0,0.1>-Channel gate threshold dBFS
+slider63:-20<-80,0,0.1>-Channel gate range dB
+slider64:430<10,2000,1>-Channel gate release ms
+slider65:1<0,1,1>-Channel gate fast attack
+
+slider66:0<-24,12,0.1>-Doubler fine trim dB
+slider67:1<0.1,4,0.01>-Doubler meander rate scale
+
+slider69:0<-10,10,0.01>-VOCAL macro
+slider70:0<-10,10,0.01>-DOUBLER macro
+slider71:0<-10,10,0.01>-DELAY macro
+slider72:0<-10,10,0.01>-REVERB macro
+
+slider73:22<1,50,0.1>-Doubler left delay ms
+slider74:23<1,50,0.1>-Doubler right delay ms
+
+slider77:0<0,2,1>-Multi out 3/4 source
+slider78:1<0,2,1>-Multi out 5/6 source
+slider79:2<0,2,1>-Multi out 7/8 source
+slider80:0<0,2,1>-Multi out 9/10 source
+
+slider81:8.3<0,100,0.1>-Reverb predelay ms
+slider82:1.2<0.1,10,0.01>-Reverb time s
+slider83:1<0,1,1>-Reverb on/off
+slider84:4500<1000,16000,10>-Reverb low pass Hz
+
+in_pin:left
+in_pin:right
+out_pin:1 Main L
+out_pin:2 Main R
+out_pin:3 Multi 1 L
+out_pin:4 Multi 1 R
+out_pin:5 Multi 2 L
+out_pin:6 Multi 2 R
+out_pin:7 Multi 3 L
+out_pin:8 Multi 3 R
+out_pin:9 Multi 4 L
+out_pin:10 Multi 4 R
+
+@init
+ext_noinit=1;
+ext_nodenorm=1;
+ext_tail_size=-1;
+
+lim_g=1;
+adv_page=0;
+gatered=0;
+mphase=0;
+
+DBL=0;
+DBR=65536;
+ML=200400;
+MR=200500;
+DBUFL=200600;
+DBUFR=266136;
+DHP=331700;
+DHP2=331800;
+last_sr=0;
+write_pos=0;
+
+function dbgain(db) (db<=-90?0:exp(db*log(10)/20););
+function db(v) ( exp(v*0.1151292546497023); );
+function level(v) ( 20*log10(max(0.000000000001,v)); );
+function tc(ms) ( exp(-1/(max(0.05,ms)*0.001*srate)); );
+
+function macro_db(v,center) (
+  v=max(-10,min(10,v));
+  v>=0 ? (
+    center+(v/10)*(12-center);
+  ) : (
+    v<=-10 ? -90
+           : max(-90,center+20*log10(1+v/10));
+  );
+);
+
+function onepole(x,f) instance(a,z) local(y) (
+  a=exp(-2*$pi*f/srate);
+  y=x+(z-x)*a;
+  z=y;
+  y;
+);
+
+function sat(x) local(y) (
+  y=x-0.08*x*x*x;
+  min(4,max(-4,y));
+);
+
+function setup(kind,f,q,gain)
+  instance(b0,b1,b2,a1,a2)
+  local(w,c,s,al,A,z,t)
+(
+  f=max(5,min(f,srate*0.45));
+  q=max(.1,q);
+  w=2*$pi*f/srate;
+  c=cos(w);
+  s=sin(w);
+  al=s/(2*q);
+  A=dbgain(gain/2);
+
+  kind==0 ? (
+    z=1+al;
+    b0=(1-c)/2/z;
+    b1=(1-c)/z;
+    b2=b0;
+    a1=-2*c/z;
+    a2=(1-al)/z;
+  );
+
+  kind==1 ? (
+    z=1+al;
+    b0=(1+c)/2/z;
+    b1=-(1+c)/z;
+    b2=b0;
+    a1=-2*c/z;
+    a2=(1-al)/z;
+  );
+
+  kind==2 ? (
+    z=1+al/A;
+    b0=(1+al*A)/z;
+    b1=-2*c/z;
+    b2=(1-al*A)/z;
+    a1=-2*c/z;
+    a2=(1-al/A)/z;
+  );
+
+  kind==3 ? (
+    t=2*sqrt(A)*s/sqrt(2);
+    z=(A+1)+(A-1)*c+t;
+    b0=A*((A+1)-(A-1)*c+t)/z;
+    b1=2*A*((A-1)-(A+1)*c)/z;
+    b2=A*((A+1)-(A-1)*c-t)/z;
+    a1=-2*((A-1)+(A+1)*c)/z;
+    a2=((A+1)+(A-1)*c-t)/z;
+  );
+);
+
+function run(x)
+  instance(b0,b1,b2,a1,a2,z1,z2)
+  local(y)
+(
+  y=b0*x+z1;
+  z1=b1*x-a1*y+z2;
+  z2=b2*x-a2*y;
+
+  abs(z1)<0.0000000000000000000000001 ? (z1=0);
+  abs(z2)<0.0000000000000000000000001 ? (z2=0);
+
+  y;
+);
+
+function configure() (
+  this.hp.setup(1,slider4,.70710678,0);
+  this.e1.setup(2,slider5,slider7,slider6);
+  this.e2.setup(2,slider8,slider10,slider9);
+  this.e3.setup(2,slider11,slider13,slider12);
+  this.chp.setup(1,slider14,.70710678,0);
+  this.clp.setup(0,slider15,.70710678,0);
+  this.hm.setup(2,slider16,slider18*slider25,slider17);
+  this.lm.setup(2,slider19,slider21*slider25,slider20);
+  this.lf.setup(slider24 ? 2 : 3,slider22,.70710678,slider23);
+  this.x1.setup(0,cross1,slider35,0);
+  this.x2.setup(0,cross2,slider35,0);
+  this.x3.setup(0,cross3,slider35,0);
+);
+
+function eq(x) (
+  x=this.hp.run(x);
+  x=this.e1.run(x);
+  x=this.e2.run(x);
+  x=this.e3.run(x);
+  x=this.chp.run(x);
+  x=this.clp.run(x);
+  x=this.hm.run(x);
+  x=this.lm.run(x);
+  this.lf.run(x);
+);
+
+function detect(p,atk,rel)
+  instance(env)
+(
+  env=p+(env-p)*(p>env ? atk : rel);
+  env;
+);
+
+function smooth(target,atk,rel)
+  instance(gr)
+(
+  gr=target+(gr-target)*(target<gr ? atk : rel);
+  db(gr);
+);
+
+function band(p,t,r,a,rel)
+  instance(env,gr,slow)
+  local(e,over,target,rr)
+(
+  e=this.detect(p,tc(a),tc(max(5,rel)));
+  over=max(0,level(e)-t);
+  target=max(r,-over*0.75);
+  slow=abs(target)+(slow-abs(target))*tc(250);
+  rr=tc(max(5,rel)*(1+min(12,slow*0.8))*(abs(gr)>3 ? 2 : 1));
+  this.smooth(target,tc(a),rr);
+);
+
+function soft(over,k)
+  local(h)
+(
+  h=k/2;
+  over<=-h ? 0 : over>=h ? over : (over+h)^2/(2*k);
+);
+
+function gate_proc(p,t,r,fast,rel)
+  instance(env,gr)
+  local(target,atk,relc)
+(
+  atk=fast>.5 ? tc(0.3) : tc(2);
+  relc=tc(rel);
+  env=p+(env-p)*(p>env ? atk : relc);
+  target=level(env)>=t ? 0 : r;
+  gr=target+(gr-target)*(target>gr ? atk : relc);
+  gatered=-gr;
+  db(gr);
+);
+
+function delay_read(base,delay)
+  local(pos,idx,frac)
+(
+  delay=min(delay,60000);
+  pos=write_pos-delay;
+  pos<0 ? (pos+=65536;);
+  idx=floor(pos);
+  frac=pos-idx;
+  base[idx]+frac*(base[(idx+1)&65535]-base[idx]);
+);
+
+// ---- PLATE 2 reverb ----
+
+function rvcombL(i,x) local(buf,y) (
+  buf=rvBufL[i];
+  y=buf[rvPosL[i]];
+  rvStL[i]=y*rvDampC+rvStL[i]*(1-rvDampC);
+  buf[rvPosL[i]]=x+rvStL[i]*rvFbL[i];
+  rvPosL[i]+=1;
+  rvPosL[i]>=rvLenL[i]?(rvPosL[i]=0;);
+  y;
+);
+
+function rvcombR(i,x) local(buf,y) (
+  buf=rvBufR[i];
+  y=buf[rvPosR[i]];
+  rvStR[i]=y*rvDampC+rvStR[i]*(1-rvDampC);
+  buf[rvPosR[i]]=x+rvStR[i]*rvFbR[i];
+  rvPosR[i]+=1;
+  rvPosR[i]>=rvLenR[i]?(rvPosR[i]=0;);
+  y;
+);
+
+function rvap(i,x) local(buf,y,out) (
+  buf=rvABuf[i];
+  y=buf[rvAPos[i]];
+  out=-x+y;
+  buf[rvAPos[i]]=x+y*0.70;
+  rvAPos[i]+=1;
+  rvAPos[i]>=rvALen[i]?(rvAPos[i]=0;);
+  out;
+);
+
+function reverb_update() (
+  rvPreLen=max(0,floor(slider81*0.001*srate));
+  i=0;
+  loop(8,
+    rvFbL[i]=min(0.999,exp(-6.9078*rvLenL[i]/srate/max(0.1,slider82)));
+    rvFbR[i]=min(0.999,exp(-6.9078*rvLenR[i]/srate/max(0.1,slider82)));
+    i+=1;
+  );
+);
+
+function update() (
+  cross1=min(slider32,srate*0.35);
+  cross2=max(cross1+10,min(slider33,srate*0.4));
+  cross3=max(cross2+10,min(slider34,srate*0.45));
+  L.configure();
+  R.configure();
+  reverb_update();
+);
+
+update();
+
+// ---- PLATE 2 reverb buffers ----
+RVT=400000;
+rvCT=RVT;
+rvAT=RVT+16;
+rvLenL=RVT+32;
+rvLenR=RVT+48;
+rvFbL=RVT+64;
+rvFbR=RVT+80;
+rvPosL=RVT+96;
+rvPosR=RVT+112;
+rvStL=RVT+128;
+rvStR=RVT+144;
+rvALen=RVT+160;
+rvABuf=RVT+176;
+rvAPos=RVT+192;
+rvBufL=RVT+208;
+rvBufR=RVT+224;
+
+RVB=400240;
+rvBase=srate/44100;
+rvScale=1.163; // size 22.1
+
+rvCT[0]=1116; rvCT[1]=1188; rvCT[2]=1277; rvCT[3]=1356;
+rvCT[4]=1422; rvCT[5]=1491; rvCT[6]=1557; rvCT[7]=1617;
+rvAT[0]=556; rvAT[1]=441; rvAT[2]=341; rvAT[3]=225;
+
+rvPreMax=floor(0.100*srate);
+rvPreBuf=RVB;
+
+rvEarlyMax=floor(0.006*srate)+1;
+rvEarlyBuf=RVB+rvPreMax*2+1;
+
+p=rvEarlyBuf+rvEarlyMax*2;
+i=0;
+loop(8,
+  rvLenL[i]=max(32,floor(rvCT[i]*rvBase*rvScale));
+  rvLenR[i]=max(32,floor((rvCT[i]+25)*rvBase*rvScale));
+  rvBufL[i]=p; p+=rvLenL[i];
+  rvBufR[i]=p; p+=rvLenR[i];
+  rvPosL[i]=0; rvPosR[i]=0;
+  rvStL[i]=0;  rvStR[i]=0;
+  i+=1;
+);
+
+i=0;
+loop(4,
+  rvALen[i]=max(16,floor(rvAT[i]*rvBase*rvScale));
+  rvABuf[i]=p; p+=rvALen[i];
+  rvAPos[i]=0;
+  i+=1;
+);
+
+rvDampL=p; p+=1;
+rvDampR=p; p+=1;
+rvLowDampL=p; p+=1;
+rvLowDampR=p; p+=1;
+rvEqLowL=p; p+=1;
+rvEqLowR=p; p+=1;
+rvEqHighL=p; p+=1;
+rvEqHighR=p; p+=1;
+rvLpL=p; p+=1;
+rvLpR=p; p+=1;
+
+rvDampC=1-exp(-2*$pi*5990/srate);
+
+reverb_update();
+
+@slider
+update();
+
+@block
+srate!=last_sr ? (
+  update();
+  last_sr=srate;
+);
+
+@sample
+xL=spl0*dbgain(slider1);
+xR=spl1*dbgain(slider1);
+
+rvL=0;
+rvR=0;
+
+slider3<.5 ? (
+  xL=L.eq(xL);
+  xR=R.eq(xR);
+
+  pk=max(abs(xL),abs(xR));
+  gg=gate_proc(pk,slider62,slider63,slider65,slider64);
+  xL*=gg;
+  xR*=gg;
+
+  pk=max(abs(xL),abs(xR));
+  ev=chan.detect(pk,tc(slider29),tc(slider28));
+  target=-max(0,level(ev)-(slider27+slider30))*(1-1/slider26);
+  cg=chan.smooth(target,tc(slider29),tc(slider28))*db(slider31);
+  xL*=cg;
+  xR*=cg;
+
+  l1=L.x1.run(xL);
+  l2=L.x2.run(xL);
+  l3=L.x3.run(xL);
+  r1=R.x1.run(xR);
+  r2=R.x2.run(xR);
+  r3=R.x3.run(xR);
+
+  b1L=l1;
+  b1R=r1;
+  b2L=l2-l1;
+  b2R=r2-r1;
+  b3L=l3-l2;
+  b3R=r3-r2;
+  b4L=xL-l3;
+  b4R=xR-r3;
+
+  g1=B1.band(max(abs(b1L),abs(b1R)),slider36,slider38,slider39,slider40)*dbgain(slider37);
+  g2=B2.band(max(abs(b2L),abs(b2R)),slider41,slider43,slider44,slider45)*dbgain(slider42);
+  g3=B3.band(max(abs(b3L),abs(b3R)),slider46,slider48,slider49,slider50)*dbgain(slider47);
+  g4=B4.band(max(abs(b4L),abs(b4R)),slider51,slider53,slider54,slider55)*dbgain(slider52);
+
+  xL=b1L*g1+b2L*g2+b3L*g3+b4L*g4;
+  xR=b1R*g1+b2R*g2+b3R*g3+b4R*g4;
+
+  pk=max(abs(xL),abs(xR));
+  ve=vdet.detect(pk,tc(2),tc(100));
+  vd=level(ve);
+
+  expt=-min(60,soft(slider56-vd,12)*0.5);
+  eg=expander.smooth(expt,tc(80),tc(2));
+  xL*=eg;
+  xR*=eg;
+
+  pk=max(abs(xL),abs(xR));
+  ce=voice.detect(pk,tc(slider59),tc(slider60));
+
+  ratio=2+(-slider57)/6;
+  ct=-soft(level(ce)-slider57,slider61)*(1-1/ratio);
+  vg=voice.smooth(ct,tc(slider59),tc(slider60))*dbgain(-slider57);
+
+  xL*=vg;
+  xR*=vg;
+
+  pk=max(abs(xL),abs(xR));
+  needed=min(1,1/max(0.000000000001,pk));
+
+  needed<lim_g ? (
+    lim_g=needed;
+  ) : (
+    lim_g=needed+(lim_g-needed)*tc(60);
+  );
+
+  xL*=lim_g*dbgain(slider58);
+  xR*=lim_g*dbgain(slider58);
+
+  dryL=xL;
+  dryR=xR;
+
+  // 831 ms echo delay: 33% feedback, 203 Hz HP, analog character.
+  echoL=delay_read(DBUFL,0.831*srate);
+  echoR=delay_read(DBUFR,0.831*srate);
+
+  echoL=echoL-DHP.onepole(echoL,203);
+  echoR=echoR-DHP2.onepole(echoR,203);
+
+  echoL=sat(echoL);
+  echoR=sat(echoR);
+
+  // H-Delay-style 30% mix level approximation.
+  delGain=dbgain(macro_db(slider71,0));
+  delL=echoL*0.3*delGain;
+  delR=echoR*0.3*delGain;
+
+  // Feedback: 33% of the filtered/saturated echo.
+  DBUFL[write_pos]=dryL+echoL*0.33;
+  DBUFR[write_pos]=dryR+echoR*0.33;
+
+  DBL[write_pos]=dryL+delL;
+  DBR[write_pos]=dryR+delR;
+
+  harmL=delay_read(DBL,slider73*0.001*srate);
+  harmR=delay_read(DBR,slider74*0.001*srate);
+
+  mphase+=slider67*0.5*2*$pi/srate;
+  mphase>=$pi*2?(mphase-=$pi*2;);
+
+  mod=sin(mphase);
+  mg=dbgain(mod);
+
+  lowL=ML.onepole(harmL,800);
+  lowR=MR.onepole(harmR,800);
+
+  harmL=lowL/mg+(harmL-lowL)*mg;
+  harmR=lowR/mg+(harmR-lowR)*mg;
+
+  wetL=harmL*dbgain(macro_db(slider70,-6)+slider66);
+  wetR=harmR*dbgain(macro_db(slider70,-6)+slider66);
+
+ // VOCAL send to reverb (pre-macro, so it still feeds reverb when VOCAL is off).
+  vocSendL=xL;
+  vocSendR=xR;
+
+  xL*=dbgain(macro_db(slider69,0));
+  xR*=dbgain(macro_db(slider69,0));
+
+  xL+=wetL;
+  xR+=wetR;
+
+  // ---- PLATE 2 REVERB ----
+  // REVERB macro: -10 = off; 0 = -6 dB wet; +10 = +6 dB wet.
+  slider83>=.5&&slider72>-9.99 ? (
+    // Sends: VOCAL + DOUBLER + DELAY.
+    rvInL=vocSendL+wetL+delL;
+    rvInR=vocSendR+wetR+delR;
+
+    // Pre-delay.
+    rvPreBuf[rvPrePos]=rvInL;
+    rvPreBuf[rvPrePos+1]=rvInR;
+    rvRead=rvPrePos-rvPreLen*2;
+    rvRead<0?(rvRead+=rvPreMax*2;);
+    rvInL=rvPreBuf[rvRead];
+    rvInR=rvPreBuf[rvRead+1];
+    rvPrePos+=2;
+    rvPrePos>=rvPreMax*2?(rvPrePos=0;);
+
+    // Early reflections: -25 dB.
+    rvEarlyBuf[rvEarlyPos]=rvInL;
+    rvEarlyBuf[rvEarlyPos+1]=rvInR;
+    rvE1=rvEarlyPos-floor(0.0011*srate)*2;
+    rvE2=rvEarlyPos-floor(0.0023*srate)*2;
+    rvE3=rvEarlyPos-floor(0.0037*srate)*2;
+    rvE4=rvEarlyPos-floor(0.0053*srate)*2;
+    rvE1<0?(rvE1+=rvEarlyMax*2;);
+    rvE2<0?(rvE2+=rvEarlyMax*2;);
+    rvE3<0?(rvE3+=rvEarlyMax*2;);
+    rvE4<0?(rvE4+=rvEarlyMax*2;);
+
+    rvEarlyL=(rvEarlyBuf[rvE1]*0.6-rvEarlyBuf[rvE2]*0.4
+             +rvEarlyBuf[rvE3]*0.3-rvEarlyBuf[rvE4]*0.25)*0.0562;
+    rvEarlyR=(-rvEarlyBuf[rvE1]*0.5+rvEarlyBuf[rvE2]*0.45
+             -rvEarlyBuf[rvE3]*0.3+rvEarlyBuf[rvE4]*0.3)*0.0562;
+
+    rvEarlyPos+=2;
+    rvEarlyPos>=rvEarlyMax*2?(rvEarlyPos=0;);
+
+    // Dense plate network: 8 combs + 4 all-passes per side.
+    rvSumL=0;
+    rvSumR=0;
+    i=0;
+    loop(8,
+      rvSumL+=rvcombL(i,rvInL);
+      rvSumR+=rvcombR(i,rvInR);
+      i+=1;
+    );
+
+    rvWetL=rvSumL*0.125;
+    rvWetR=rvSumR*0.125;
+
+    rvWetL=rvap(0,rvWetL);
+    rvWetR=rvap(1,rvWetR);
+    rvWetL=rvap(2,rvWetL);
+    rvWetR=rvap(3,rvWetR);
+
+    // Low damping: 0.43 ratio at 198 Hz.
+    rvWetL-=rvLowDampL.onepole(rvWetL,198)*0.57;
+    rvWetR-=rvLowDampR.onepole(rvWetR,198)*0.57;
+
+    // Output EQ: -10 dB at 98 Hz.
+    rvWetL-=rvEqLowL.onepole(rvWetL,98)*0.684;
+    rvWetR-=rvEqLowR.onepole(rvWetR,98)*0.684;
+
+    // Output EQ: +2 dB at 5051 Hz.
+    rvWetL+=(rvWetL-rvEqHighL.onepole(rvWetL,5051))*0.259;
+    rvWetR+=(rvWetR-rvEqHighR.onepole(rvWetR,5051))*0.259;
+    // Reverb low pass: cuts high end, default 4.5 kHz.
+    rvWetL=rvLpL.onepole(rvWetL,slider84);
+    rvWetR=rvLpR.onepole(rvWetR,slider84);
+
+    rvWet=dbgain(macro_db(slider72,-9));
+
+    rvL=(rvWetL+rvEarlyL)*rvWet;
+    rvR=(rvWetR+rvEarlyR)*rvWet;
+
+    // Reverb is added to MAIN L/R only.
+    xL+=rvL;
+    xR+=rvR;
+  );
+
+  write_pos=(write_pos+1)&65535;
+);
+
+xL!=xL ? (xL=0);
+xR!=xR ? (xR=0);
+xL=min(8,max(-8,xL));
+xR=min(8,max(-8,xR));
+
+mout=dbgain(slider2);
+
+spl0=(xL+delL)*mout;
+spl1=(xR+delR)*mout;
+
+// Multi outputs never include reverb.
+spl2=slider77==0?dryL*dbgain(macro_db(slider69,0))*mout:
+     slider77==1?wetL*mout:
+     slider77==2?delL*mout:0;
+spl3=slider77==0?dryR*dbgain(macro_db(slider69,0))*mout:
+     slider77==1?wetR*mout:
+     slider77==2?delR*mout:0;
+
+spl4=slider78==0?dryL*dbgain(macro_db(slider69,0))*mout:
+     slider78==1?wetL*mout:
+     slider78==2?delL*mout:0;
+spl5=slider78==0?dryR*dbgain(macro_db(slider69,0))*mout:
+     slider78==1?wetR*mout:
+     slider78==2?delR*mout:0;
+
+spl6=slider79==0?dryL*dbgain(macro_db(slider69,0))*mout:
+     slider79==1?wetL*mout:
+     slider79==2?delL*mout:0;
+spl7=slider79==0?dryR*dbgain(macro_db(slider69,0))*mout:
+     slider79==1?wetR*mout:
+     slider79==2?delR*mout:0;
+
+spl8=slider80==0?dryL*dbgain(macro_db(slider69,0))*mout:
+     slider80==1?wetL*mout:
+     slider80==2?delL*mout:0;
+spl9=slider80==0?dryR*dbgain(macro_db(slider69,0))*mout:
+     slider80==1?wetR*mout:
+     slider80==2?delR*mout:0;
+
+@gfx 900 480
+
+function build_metal_tile() local(x,y,n,rn,base) (
+  gfx_setimgdim(1,256,256);gfx_dest=1;y=0;
+  loop(256,rn=sin(y*4.1414)*43758.5453;rn-=floor(rn);x=0;
+    loop(256,n=sin(x*12.9898+y*78.233)*43758.5453;n-=floor(n);
+      base=0.20+(n-0.5)*0.045+(rn-0.5)*0.012;
+      gfx_x=x;gfx_y=y;gfx_setpixel(base,base,base);x+=1;);y+=1;);
+  gfx_dest=-1;
+);
+
+function draw_metal_panel() local(x,y,i,top,bottom) (
+  !metal_tile_ready?(build_metal_tile();metal_tile_ready=1;);
+  gfx_set(1,1,1,1);y=0;
+  loop(ceil(gfx_h/256),x=0;
+    loop(ceil(gfx_w/256),gfx_x=x*256;gfx_y=y*256;gfx_blit(1,1,0);x+=1;);y+=1;);
+  i=0;loop(64,top=floor(i*gfx_h/64);bottom=floor((i+1)*gfx_h/64);
+    gfx_set(0,0,0,0.20*i/63);gfx_rect(0,top,gfx_w,bottom-top);i+=1;);
+  gfx_set(1,1,1,0.14);gfx_rect(0,0,gfx_w,1);gfx_rect(0,0,1,gfx_h);
+  gfx_set(0,0,0,0.48);gfx_rect(0,gfx_h-1,gfx_w,1);gfx_rect(gfx_w-1,0,1,gfx_h);gfx_a=1;
+);
+
+function rect(x,y,w,h) (gfx_rect(gx+x*gs,gy+y*gs,w*gs,h*gs););
+function text_at(str,x,y) (gfx_x=gx+x*gs;gfx_y=gy+y*gs;gfx_drawstr(str););
+function centered(str,x,y) local(w,h) (
+  gfx_measurestr(str,w,h);gfx_x=gx+x*gs-w/2;gfx_y=gy+y*gs;gfx_drawstr(str);
+);
+function hit(x,y,w,h) (ui_x>=x&&ui_x<x+w&&ui_y>=y&&ui_y<y+h;);
+function section(str,y) (
+  gfx_set(0,0,0,0.55);rect(20,y,860,1);
+  gfx_set(1,1,1,0.12);rect(20,y+1,860,1);
+  gfx_set(0.78,0.81,0.84,1);text_at(str,25,y+7);
+);
+function sget(id) (
+  id==1?slider1:id==4?slider4:id==5?slider5:id==6?slider6:
+  id==7?slider7:id==8?slider8:id==9?slider9:id==10?slider10:
+  id==11?slider11:id==12?slider12:id==13?slider13:id==14?slider14:
+  id==15?slider15:id==16?slider16:id==17?slider17:id==18?slider18:
+  id==19?slider19:id==20?slider20:id==21?slider21:id==22?slider22:
+  id==23?slider23:id==24?slider24:id==25?slider25:id==26?slider26:
+  id==27?slider27:id==28?slider28:id==29?slider29:id==30?slider30:
+  id==31?slider31:id==32?slider32:id==33?slider33:id==34?slider34:
+  id==35?slider35:id==56?slider56:id==57?slider57:id==58?slider58:
+  id==59?slider59:id==60?slider60:id==61?slider61:id==62?slider62:
+  id==63?slider63:id==64?slider64:id==65?slider65:id==66?slider66:
+  id==67?slider67:id==69?slider69:id==70?slider70:id==71?slider71:
+  id==72?slider72:id==73?slider73:id==74?slider74:id==77?slider77:
+  id==78?slider78:id==79?slider79:id==80?slider80:
+  id==81?slider81:id==82?slider82:id==83?slider83:
+  id==84?slider84;
+);
+function sset(id,v) (
+  id==1?slider1=v:id==4?slider4=v:id==5?slider5=v:id==6?slider6=v:
+  id==7?slider7=v:id==8?slider8=v:id==9?slider9=v:id==10?slider10=v:
+  id==11?slider11=v:id==12?slider12=v:id==13?slider13=v:id==14?slider14=v:
+  id==15?slider15=v:id==16?slider16=v:id==17?slider17=v:id==18?slider18=v:
+  id==19?slider19=v:id==20?slider20=v:id==21?slider21=v:id==22?slider22=v:
+  id==23?slider23=v:id==24?slider24=v:id==25?slider25=v:id==26?slider26=v:
+  id==27?slider27=v:id==28?slider28=v:id==29?slider29=v:id==30?slider30=v:
+  id==31?slider31=v:id==32?slider32=v:id==33?slider33=v:id==34?slider34=v:
+  id==35?slider35=v:id==56?slider56=v:id==57?slider57=v:id==58?slider58=v:
+  id==59?slider59=v:id==60?slider60=v:id==61?slider61=v:id==62?slider62=v:
+  id==63?slider63=v:id==64?slider64=v:id==65?slider65=v:id==66?slider66=v:
+  id==67?slider67=v:id==69?slider69=v:id==70?slider70=v:id==71?slider71=v:
+  id==72?slider72=v:id==73?slider73=v:id==74?slider74=v:id==77?slider77=v:
+  id==78?slider78=v:id==79?slider79=v:id==80?slider80=v:
+  id==81?slider81=v:id==82?slider82=v:id==83?slider83=v:
+  id==84?slider84=v:0;
+);
+function rname(r) (
+  r==0?sprintf(#rn,"VOCAL"):
+  r==1?sprintf(#rn,"DOUBLER"):
+  sprintf(#rn,"DELAY");
+);
+function main_label(str,x,y,r) local(w,h,fs,target) (
+  fs=max(10,floor(30*gs));gfx_setfont(3,"Arial",fs,'b');gfx_measurestr(str,w,h);
+  target=2*r*1.3*gs;
+  fs=max(8,floor(fs*min(1,target/max(1,w))));
+  gfx_setfont(3,"Arial",fs,'b');
+  gfx_set(0,0,0,0.55);centered(str,x+0.5,y+1);
+  gfx_set(0.90,0.91,0.92,1);centered(str,x,y);
+  gfx_setfont(1);
+);
+function knob(id,x,y,r,label,lo,hi,step,def,lg,cr,cg,cb)
+  local(dx,dy,n,v,a,i,t,now)
+(
+  dx=ui_x-x;dy=ui_y-y;v=sget(id);
+
+  lg?(
+    n=max(0,min(1,log(max(0.0001,v)/lo)/log(hi/lo)));
+  ):(
+    n=max(0,min(1,(v-lo)/(hi-lo)));
+  );
+
+  now=time_precise();
+
+  ui_click&&dx*dx+dy*dy<r*r*1.6?(
+    ui_last_id==id&&now-ui_last_time<0.35?(
+      sset(id,def);
+      ui_drag=0;
+      ui_last_id=0;
+    ):(
+      ui_drag=id;
+      ui_drag_y=ui_y;
+      ui_drag_n=n;
+      ui_last_id=id;
+      ui_last_time=now;
+    );
+  );
+
+  ui_drag==id&&(mouse_cap&1)?(
+    n=max(0,min(1,ui_drag_n+(ui_drag_y-ui_y)*0.004));
+
+    lg?(
+      v=lo*exp(n*log(hi/lo));
+    ):(
+      v=lo+n*(hi-lo);
+    );
+
+    v=lo+floor((v-lo)/step+0.5)*step;
+    v=max(lo,min(hi,v));
+
+    v!=sget(id)?(sset(id,v););
+
+    lg?(
+      n=max(0,min(1,log(max(0.0001,sget(id))/lo)/log(hi/lo)));
+    ):(
+      n=max(0,min(1,(sget(id)-lo)/(hi-lo)));
+    );
+  );
+
+  gfx_set(0.78,0.78,0.78,1);i=0;
+  loop(11,t=0.75*$pi+i*0.15*$pi;
+    gfx_circle(gx+(x+cos(t)*r*1.3)*gs,gy+(y+sin(t)*r*1.3)*gs,max(1,r*0.06*gs),1,1);i+=1;);
+
+  gfx_set(0,0,0,0.42);gfx_circle(gx+(x+r*0.10)*gs,gy+(y+r*0.20)*gs,(r+2)*gs,1,1);
+  gfx_set(0.035,0.035,0.04,1);gfx_circle(gx+x*gs,gy+y*gs,(r+1.5)*gs,1,1);
+  gfx_set(0.57,0.59,0.61,1);gfx_circle(gx+x*gs,gy+y*gs,(r+0.5)*gs,1,1);
+  gfx_set(cr*0.55,cg*0.55,cb*0.55,1);gfx_circle(gx+x*gs,gy+y*gs,(r-0.5)*gs,1,1);
+  gfx_set(cr,cg,cb,1);gfx_circle(gx+x*gs,gy+y*gs,r*0.88*gs,1,1);
+  gfx_set(1,1,1,0.16);gfx_circle(gx+(x-r*0.18)*gs,gy+(y-r*0.24)*gs,r*0.55*gs,1,1);
+  gfx_set(0,0,0,0.16);gfx_circle(gx+(x+r*0.22)*gs,gy+(y+r*0.28)*gs,r*0.5*gs,1,1);
+
+  a=0.75*$pi+n*1.5*$pi;gfx_set(0.98,0.98,0.97,1);
+  gfx_line(gx+(x+cos(a)*r*0.20)*gs,gy+(y+sin(a)*r*0.20)*gs,
+           gx+(x+cos(a)*r*0.94)*gs,gy+(y+sin(a)*r*0.94)*gs,1);
+
+  id>=69&&id<=72?(
+    main_label(label,x,y-r-45,r);
+  ):(
+    gfx_set(0.86,0.88,0.90,1);centered(label,x,y-r-28);
+
+    lg?(
+      sget(id)>=1000?sprintf(#knval,"%.2f kHz",sget(id)/1000)
+                    :sprintf(#knval,"%.0f Hz",sget(id));
+    ):(
+      step>=1?sprintf(#knval,"%.1f",sget(id))
+             :sprintf(#knval,"%.2f",sget(id));
+    );
+
+    centered(#knval,x,y+r+17);
+  );
+);
+function button(x,y,w,h,label,on,br,bg,bb) local(clicked) (
+  clicked=ui_click&&hit(x,y,w,h);
+
+  gfx_set(0,0,0,0.45);rect(x-1,y-1,w+3,h+3);
+
+  on?(
+    gfx_set(br*0.75,bg*0.75,bb*0.75,1);
+  ):(
+    gfx_set(br*0.30,bg*0.30,bb*0.30,1);
+  );
+
+  rect(x,y,w,h);
+
+  gfx_set(1,1,1,0.18);rect(x,y,w,1);
+  gfx_set(0,0,0,0.40);rect(x,y+h-1,w,1);
+
+  gfx_set(0.88,0.90,0.93,1);
+  centered(label,x+w/2,y+(h-14)/2);
+
+  clicked;
+);
+function toggle(id,x,y,w,label,on,def,br,bg,bb) local(state) (
+  state=sget(id);
+  button(x,y,w,28,label,on,br,bg,bb)?(
+    sset(id,1-state);
+  );
+);
+function meter(x,y,w,txt,val,limit) local(fill,i) (
+  gfx_set(0.78,0.81,0.84,1);text_at(txt,x,y);
+  sprintf(#mnum,"%.1f dB",val);text_at(#mnum,x+w-70,y);
+  gfx_set(0.06,0.07,0.09,1);rect(x,y+18,w,12);
+  fill=min(1,max(0,val/limit));
+  gfx_set(0.95,0.63,0.22,1);rect(x,y+18,w*fill,12);
+  gfx_set(0.26,0.28,0.31,1);i=1;
+  loop(5,rect(x+w*i/6,y+18,1,12);i+=1;);
+);
+
+gfx_clear=0x303030;
+draw_metal_panel();
+gfx_getchar();
+
+canvas_h=adv_page?1150:280;
+gs=min(gfx_w/900,gfx_h/canvas_h);
+gx=(gfx_w-900*gs)/2;
+gy=(gfx_h-canvas_h*gs)/2;
+ui_x=(mouse_x-gx)/gs;
+ui_y=(mouse_y-gy)/gs;
+ui_click=(mouse_cap&1)&&!(ui_prev_cap&1);
+
+gfx_setfont(1,"Arial",max(9,13*gs));
+
+// Main window: Big Four + ADVANCED.
+!adv_page?(
+  gfx_setfont(3,"Impact",max(36,floor(60*gs)),'b');
+  gfx_set(0.90,0.91,0.92,1);
+  centered("O Z Z - O - L A T O R",450,0);
+
+  knob(69,150,170,40,"VOCAL",-10,10,0.01,0,0,0.25,0.40,0.52);
+  knob(70,350,170,40,"DOUBLER",-10,10,0.01,0,0,0.31,0.49,0.36);
+  knob(71,550,170,40,"DELAY",-10,10,0.01,0,0,0.60,0.39,0.22);
+  knob(72,750,170,40,"REVERB",-10,10,0.01,0,0,0.62,0.27,0.24);
+
+  button(380,245,140,28,"ADVANCED",0,0.85,0.55,0.15)?(
+    adv_page=1;
+  );
+);
+
+// Advanced menu.
+adv_page?(
+  gfx_set(0.07,0.10,0.18,0.97);rect(0,0,900,1150);
+  gfx_setfont(1,"Arial",19);
+  gfx_set(0.90,0.92,0.97,1);text_at("ADVANCED SETTINGS",25,12);
+
+  gfx_setfont(1,"Arial",13);
+
+  button(25,45,150,26,"EQ / CHANNEL",adv_page==1,0.20,0.45,0.75)?(adv_page=1;);
+  button(185,45,250,26,"GATE / MULTIBAND / VOCAL",adv_page==2,0.55,0.30,0.70)?(adv_page=2;);
+  button(445,45,110,26,"DOUBLER",adv_page==3,0.30,0.65,0.35)?(adv_page=3;);
+  button(565,45,110,26,"REVERB",adv_page==4,0.62,0.27,0.24)?(adv_page=4;);
+  button(685,45,80,26,"CLOSE",0,0.45,0.45,0.45)?(adv_page=0;);
+
+  gfx_set(0.55,0.61,0.69,1);
+  text_at("Drag knobs vertically. Double-click returns a knob to its default.",25,82);
+
+  ui_gate=max(max(0,gatered),ui_gate*.82);
+  ui_ch=max(max(0,-chan.gr),ui_ch*.82);
+  ui_b1=max(max(0,-B1.gr),ui_b1*.82);
+  ui_b2=max(max(0,-B2.gr),ui_b2*.82);
+  ui_b3=max(max(0,-B3.gr),ui_b3*.82);
+  ui_b4=max(max(0,-B4.gr),ui_b4*.82);
+  ui_vo=max(max(0,-voice.gr),ui_vo*.82);
+  ui_ex=max(max(0,-expander.gr),ui_ex*.82);
+  ui_li=max(max(0,-20*log10(max(0.000000000001,lim_g))),ui_li*.82);
+
+  slider3>.5?(
+    ui_gate=0;ui_ch=0;ui_b1=0;ui_b2=0;ui_b3=0;ui_b4=0;ui_vo=0;ui_ex=0;ui_li=0;
+  );
+
+  adv_page==1?(
+    section("INPUT",120);
+    knob(1,150,210,26,"INPUT",-24,24,0.1,0,0,0.28,0.40,0.52);
+
+    section("INPUT EQ",300);
+    knob(4,85,385,26,"HP Hz",20,1000,1,160,1,0.28,0.40,0.52);
+    knob(5,215,385,26,"F1 Hz",20,20000,1,200,1,0.28,0.40,0.52);
+    knob(6,345,385,26,"G1 dB",-24,12,0.1,-11,0,0.28,0.40,0.52);
+    knob(7,475,385,26,"Q1",0.5,100,0.01,7.9,1,0.28,0.40,0.52);
+    knob(8,605,385,26,"F2 Hz",20,20000,1,561,1,0.28,0.40,0.52);
+    knob(9,735,385,26,"G2 dB",-24,12,0.1,-4.5,0,0.28,0.40,0.52);
+    knob(10,865,385,26,"Q2",0.5,100,0.01,7,1,0.28,0.40,0.52);
+
+    knob(11,85,505,26,"F3 Hz",20,20000,1,1224,1,0.28,0.40,0.52);
+    knob(12,205,505,26,"G3 dB",-24,12,0.1,-9,0,0.28,0.40,0.52);
+    knob(13,325,505,26,"Q3",0.5,100,0.01,85,1,0.28,0.40,0.52);
+
+    section("CHANNEL EQ",580);
+    knob(14,85,665,26,"HP",20,1000,1,200,1,0.28,0.40,0.52);
+    knob(15,215,665,26,"LP",1000,22000,1,10100,1,0.28,0.40,0.52);
+    knob(16,345,665,26,"HMF",200,16000,1,4100,1,0.28,0.40,0.52);
+    knob(17,475,665,26,"HMF GAIN",-18,18,0.1,-2.7,0,0.28,0.40,0.52);
+    knob(18,605,665,26,"Q",0.25,8,0.01,1.5,0,0.28,0.40,0.52);
+    knob(19,735,665,26,"LMF",40,8000,1,600,1,0.28,0.40,0.52);
+    knob(20,865,665,26,"LMF GAIN",-18,18,0.1,-4,0,0.60,0.39,0.22);
+    knob(21,85,780,24,"Q",0.25,8,0.01,2,0,0.28,0.40,0.52);
+    knob(22,205,780,24,"LF",20,1000,1,161,1,0.28,0.40,0.52);
+    knob(23,325,780,24,"LF GAIN",-18,18,0.1,-6,0,0.60,0.39,0.22);
+    toggle(24,387,780,35,"LF B",slider24,0,0.20,0.45,0.75);
+    knob(25,477,780,24,"Q",0.25,4,0.01,1,1,0.31,0.49,0.36);
+
+    section("CHANNEL COMPRESSOR",890);
+    knob(26,85,975,26,"RATIO",1,20,0.1,4,0,0.28,0.40,0.52);
+    knob(27,215,975,26,"THRESH",-40,20,0.1,0,0,0.28,0.40,0.52);
+    knob(28,345,975,26,"RELEASE",10,2000,1,400,1,0.28,0.40,0.52);
+    knob(29,475,975,26,"ATTACK",0.1,100,0.1,10,0,0.28,0.40,0.52);
+    knob(31,605,975,26,"MAKEUP",0,24,0.1,0,0,0.28,0.40,0.52);
+    meter(510,1050,350,"CHANNEL COMPRESSION GR",ui_ch,24);
+  );
+
+  adv_page==2?(
+    section("CHANNEL GATE",120);
+    knob(62,150,210,28,"THRESHOLD",-80,0,0.1,-40,0,0.28,0.40,0.52);
+    knob(63,350,210,28,"RANGE",-80,0,0.1,-20,0,0.60,0.39,0.22);
+    knob(64,550,210,28,"RELEASE",10,2000,1,430,1,0.31,0.49,0.36);
+    toggle(65,720,198,140,"F.ATK",slider65,1,0.75,0.22,0.20);
+
+    meter(25,290,410,"CHANNEL GATE GR",ui_gate,40);
+
+    section("MULTIBAND CROSSOVERS",390);
+    knob(32,150,480,28,"LOW / LM",20,1000,1,248,1,0.28,0.40,0.52);
+    knob(33,350,480,28,"LM / HM",500,5000,1,1901,1,0.60,0.39,0.22);
+    knob(34,550,480,28,"HM / HIGH",2000,18000,1,5661,1,0.31,0.49,0.36);
+    knob(35,750,480,28,"X Q",0.5,2,0.01,0.75,0,0.45,0.37,0.28);
+
+    meter(25,560,410,"LOW BAND GR",ui_b1,12);
+    meter(465,560,410,"LOW-MID BAND GR",ui_b2,12);
+    meter(25,610,410,"HIGH-MID BAND GR",ui_b3,12);
+    meter(465,610,410,"HIGH BAND GR",ui_b4,12);
+
+    section("VOCAL LEVELER",700);
+    knob(56,150,790,26,"GATE",-100,0,0.1,-79.9,0,0.28,0.40,0.52);
+    knob(57,350,790,26,"COMPRESS",-36,0,0.1,-12,0,0.28,0.40,0.52);
+    knob(58,550,790,26,"CEILING",-36,0,0.1,-3,0,0.60,0.39,0.22);
+    knob(59,750,790,26,"ATTACK",0.1,50,0.1,3,0,0.28,0.40,0.52);
+
+    knob(60,150,910,26,"RELEASE",20,1000,1,120,1,0.28,0.40,0.52);
+    knob(61,350,910,26,"KNEE",1,30,0.1,18,0,0.28,0.40,0.52);
+
+    meter(25,970,410,"VOCAL GATE GR",ui_ex,60);
+    meter(465,970,410,"VOCAL COMPRESSION GR",ui_vo,24);
+    meter(25,1020,410,"VOCAL LIMITER GR",ui_li,24);
+  );
+
+  adv_page==3?(
+    section("DOUBLER",120);
+    knob(66,150,210,26,"FINE TRIM",-24,12,0.1,0,0,0.31,0.49,0.36);
+    knob(73,350,210,26,"L DELAY",1,50,0.1,22,0,0.28,0.40,0.52);
+    knob(74,550,210,26,"R DELAY",1,50,0.1,23,0,0.31,0.49,0.36);
+
+    section("MULTI OUT ROUTING",330);
+    rname(slider77);sprintf(#rb,"OUT 3/4: %s",#rn);
+    button(25,400,270,28,#rb,0,0.20,0.45,0.75)?(sset(77,(slider77+1)%3););
+
+    rname(slider78);sprintf(#rb,"OUT 5/6: %s",#rn);
+    button(325,400,270,28,#rb,0,0.20,0.45,0.75)?(sset(78,(slider78+1)%3););
+
+    rname(slider79);sprintf(#rb,"OUT 7/8: %s",#rn);
+    button(25,500,270,28,#rb,0,0.20,0.45,0.75)?(sset(79,(slider79+1)%3););
+
+    rname(slider80);sprintf(#rb,"OUT 9/10: %s",#rn);
+    button(325,500,270,28,#rb,0,0.20,0.45,0.75)?(sset(80,(slider80+1)%3););
+
+    gfx_set(0.70,0.74,0.77,1);
+    text_at("Click a routing button to cycle its output pair between VOCAL, DOUBLER, and DELAY.",25,610);
+    text_at("Use a 10-channel track in REAPER to access all output pairs.",25,660);
+  );
+
+  adv_page==4?(
+    section("REVERB",120);
+    toggle(83,150,190,140,slider83>=.5?"ON":"OFF",slider83,1,0.62,0.27,0.24);
+
+    knob(81,350,210,28,"PREDELAY",0,100,0.1,8.3,0,0.62,0.27,0.24);
+    knob(82,450,210,28,"TIME",0.1,10,0.01,1.2,0,0.62,0.27,0.24);
+    knob(84,550,210,28,"LP",1000,16000,10,4500,1,0.62,0.27,0.24);
+
+    gfx_set(0.70,0.74,0.77,1);
+  );
+);
+
+ui_prev_cap=mouse_cap;
+!(mouse_cap&1)?ui_drag=0;
