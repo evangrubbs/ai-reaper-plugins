@@ -1,0 +1,238 @@
+desc:The Exciting Compressor
+// REAPER 6.74+. Put both PNG images in the same folder as this file.
+// Plugin created by Claude AI, Perplexity, ChatGPT and Evan Grubbs
+// Inspired by Andrew Scheps' 'Exciting Compressor' Technique
+options:no_meter
+slider1:0<-24,24,0.1>Input trim (dB)
+slider2:0<-24,24,0.1>Threshold offset (dB)
+slider3:0<-12,12,0.1>Stage extra gain (dB)
+slider4:10.5<-36,24,0.1>Output trim (dB)
+slider5:1<0,1,1{Off,On}>Compressor
+slider6:1<0,1,1{Off,On}>Saturation
+slider7:1<0,1,1{Off,On}>EQ stages
+slider8:1<0,1,1{Off,On}>DC block
+slider9:55<0,100,1>Peak Reduction (approximate)
+slider10:0<0,24,0.1>Compressor makeup gain (dB)
+slider11:12<0,30,0.1>Saturation drive (dB)
+slider12:35<0,100,1>Saturation mix (%)
+in_pin:left in
+in_pin:right in
+out_pin:left out
+out_pin:right out
+
+@init
+function set_bq(i,kind,f,g,q,fs)
+local(A,w,c,al,t,b0,b1,b2,a0,a1,a2,p)
+(
+ f=min(max(f,5),fs*0.45);
+ A=10^(g/40); w=2*$pi*f/fs; c=cos(w); al=sin(w)/(2*q);
+ kind==0 ? (
+ b0=1+al*A; b1=-2*c; b2=1-al*A;
+ a0=1+al/A; a1=-2*c; a2=1-al/A;
+ ) : kind==1 ? (
+ t=2*sqrt(A)*al;
+ b0=A*((A+1)-(A-1)*c+t); b1=2*A*((A-1)-(A+1)*c); b2=A*((A+1)-(A-1)*c-t);
+ a0=(A+1)+(A-1)*c+t; a1=-2*((A-1)+(A+1)*c); a2=(A+1)+(A-1)*c-t;
+ ) : kind==2 ? (
+ t=2*sqrt(A)*al;
+ b0=A*((A+1)+(A-1)*c+t); b1=-2*A*((A-1)+(A+1)*c); b2=A*((A+1)+(A-1)*c-t);
+ a0=(A+1)-(A-1)*c+t; a1=2*((A-1)-(A+1)*c); a2=(A+1)-(A-1)*c-t;
+ ) : (
+ b0=(1+c)/2; b1=-(1+c); b2=(1+c)/2;
+ a0=1+al; a1=-2*c; a2=1-al;
+ );
+ p=i*5; p[0]=b0/a0; p[1]=b1/a0; p[2]=b2/a0; p[3]=a1/a0; p[4]=a2/a0;
+);
+function bq(ch,i,x) local(p,s,y) (
+ p=i*5; s=200+(ch*16+i)*2;
+ y=p[0]*x+s[0]; s[0]=p[1]*x-p[3]*y+s[1]; s[1]=p[2]*x-p[4]*y; y;
+);
+function run_bq(ch,i,n,x) local(j) (
+ j=i; loop(n,x=bq(ch,j,x); j+=1;); x;
+);
+function bq_mag(i,f,fs) local(p,w,c1,s1,c2,s2,nr,ni,dr,di) (
+ p=i*5; w=2*$pi*f/fs; c1=cos(w); s1=sin(w); c2=cos(2*w); s2=sin(2*w);
+ nr=p[0]+p[1]*c1+p[2]*c2; ni=-(p[1]*s1+p[2]*s2);
+ dr=1+p[3]*c1+p[4]*c2; di=-(p[3]*s1+p[4]*s2);
+ sqrt((nr*nr+ni*ni)/max(dr*dr+di*di,0.000000000001));
+);
+function to_db(x) (20*log10(max(abs(x),0.000000001)););
+function sat_sample(x) local(u) (
+ u=x*sat_drive+0.1; (u/sqrt(1+u*u)-sat_zero)*sat_norm;
+);
+function update_params() (
+ input_gain=10^(slider1/20); extra_gain=10^(slider3/20); output_gain=10^(slider4/20);
+ comp_on=slider5>=0.5; sat_on=slider6>=0.5; eq_on=slider7>=0.5; dc_on=slider8>=0.5;
+ threshold_db=-8.5-0.5*slider9+slider2; makeup_gain=10^(slider10/20);
+ sat_drive=10^(slider11/20); sat_mix=slider12/100;
+ sat_zero=0.1/sqrt(1.01); sat_norm=1.01^1.5/sat_drive;
+);
+function param_get(i) (
+ i==1 ? slider1 : i==2 ? slider2 : i==3 ? slider3 : i==4 ? slider4 :
+ i==5 ? slider5 : i==6 ? slider6 : i==7 ? slider7 : i==8 ? slider8 :
+ i==9 ? slider9 : i==10 ? slider10 : i==11 ? slider11 : slider12;
+);
+function param_set(i,v) local(mask) (
+ i==1 ? slider1=v : i==2 ? slider2=v : i==3 ? slider3=v : i==4 ? slider4=v :
+ i==5 ? slider5=v : i==6 ? slider6=v : i==7 ? slider7=v : i==8 ? slider8=v :
+ i==9 ? slider9=v : i==10 ? slider10=v : i==11 ? slider11=v : slider12=v;
+ mask=2^(i-1); sliderchange(mask); slider_automate(mask); update_params();
+);
+function hit(x,y,w,h) (
+ ux>=x && ux<x+w && uy>=y && uy<y+h;
+);
+function control(i,x,y,w,lo,hi,step,label) local(v,f,newv,xx,yy,ww,hh) (
+ v=param_get(i);
+ // Coordinates are in the 1536 x 1024 design space.
+ pressed && hit(x,y,w,52) ? (
+  i>=5 && i<=8 ? (
+   param_set(i,1-v); slider_automate(2^(i-1),1);
+  ) : drag_id=i;
+ );
+ drag_id==i && left_down ? (
+  f=min(1,max(0,(ux-x)/w));
+  newv=lo+floor((hi-lo)*f/step+0.5)*step;
+  newv=min(hi,max(lo,newv));
+  newv!=v ? param_set(i,newv);
+  v=param_get(i);
+ );
+ xx=ox+x*sc; yy=oy+y*sc; ww=w*sc; hh=52*sc;
+ gfx_set(0.035,0.035,0.035,0.94); gfx_rect(xx-8*sc,yy-3*sc,ww+16*sc,hh+4*sc);
+ gfx_set(0.9,0.9,0.9,1); gfx_x=xx; gfx_y=yy;
+ gfx_drawstr(label); gfx_drawstr(": ");
+ i>=5 && i<=8 ? (v>=0.5 ? gfx_drawstr("On") : gfx_drawstr("Off")) : gfx_drawnumber(v,step>=1 ? 0 : 1);
+ gfx_set(0.23,0.23,0.23,1); gfx_rect(xx,yy+30*sc,ww,12*sc);
+ f=(v-lo)/(hi-lo);
+ gfx_set(0.75,0.08,0.035,1); gfx_rect(xx,yy+30*sc,ww*f,12*sc);
+ gfx_set(0.95,0.72,0.5,1); gfx_rect(xx+ww*f-2*sc,yy+27*sc,4*sc,18*sc);
+);
+fs=max(srate,1); memset(0,0,80); memset(200,0,64);
+set_bq(0,2,2509.9,16.09,0.39,fs);
+set_bq(1,2,9907.8,-6.08,0.53,fs);
+set_bq(2,1,27.5,-0.56,0.87,fs);
+set_bq(3,0,19845,-0.92,1.45,fs);
+set_bq(4,0,11067.9,-0.60,0.44,fs);
+set_bq(5,1,15.7,-0.58,0.46,fs);
+set_bq(6,1,15889.5,0.46,0.51,fs);
+set_bq(7,2,2047.1,-9.30,0.30,fs);
+set_bq(8,2,349.9,-4.16,0.52,fs);
+set_bq(9,0,19845,-0.91,2.03,fs);
+set_bq(10,2,29.1,0.18,1.11,fs);
+set_bq(11,3,70.4,0,0.71,fs);
+set_bq(12,2,3695.9,13.10,0.54,fs);
+set_bq(13,2,6573.8,-6.69,0.52,fs);
+pre_gain=10^(-7.22/20); post_gain=10^(10.12/20);
+tone_norm=1/max(bq_mag(4,1000,fs)*bq_mag(5,1000,fs)*bq_mag(6,1000,fs),0.000000001);
+detector_norm=1/max(bq_mag(11,1000,fs)*bq_mag(12,1000,fs)*bq_mag(13,1000,fs),0.000000001);
+det_attack=1-exp(-1/(0.001*fs)); det_release=1-exp(-1/(0.050*fs));
+gr_attack=1-exp(-1/(0.010*fs)); rel_fast=1-exp(-1/(0.180*fs)); rel_slow=1-exp(-1/(1.500*fs));
+meter_decay=exp(-1/(0.500*fs)); dc_pole=exp(-2*$pi*5/fs);
+env=0; gr_fast=0; gr_slow=0; gr=0; detector_db=-180;
+meter_in=0; meter_out=0; dc_in_l=0; dc_in_r=0; dc_out_l=0; dc_out_r=0;
+advanced=0; previous_left=0; drag_id=0; images_loaded=0;
+slider_show(4095,0); update_params();
+
+@slider
+update_params();
+
+@sample
+xl=spl0*input_gain; xr=spl1*input_gain;
+meter_in=max(max(abs(xl),abs(xr)),meter_in*meter_decay);
+eq_on ? (xl=run_bq(0,0,4,xl)*pre_gain; xr=run_bq(1,0,4,xr)*pre_gain;);
+sl=run_bq(0,11,3,xl); sr=run_bq(1,11,3,xr);
+det=max(abs(sl),abs(sr))*detector_norm;
+env+=(det>env ? det_attack : det_release)*(det-env);
+detector_db=to_db(env); over=detector_db-threshold_db;
+over<=-4 ? target=0 : over>=4 ? target=0.75*over : target=0.75*(over+4)*(over+4)/16;
+slider9<=0 ? target=0;
+comp_on ? (
+ gr_fast+=(target>gr_fast ? gr_attack : rel_fast)*(target-gr_fast);
+ gr_slow+=(target>gr_slow ? gr_attack : rel_slow)*(target-gr_slow);
+ gr=max(0,0.75*gr_fast+0.25*gr_slow); gn=10^(-gr/20);
+) : (gr_fast=0; gr_slow=0; gr=0; gn=1;);
+sat_on ? (
+ yl=xl+sat_mix*(sat_sample(xl)-xl); yr=xr+sat_mix*(sat_sample(xr)-xr);
+) : (yl=xl; yr=xr;);
+stage_gain=extra_gain*(comp_on ? gn*makeup_gain : 1); yl*=stage_gain; yr*=stage_gain;
+eq_on ? (
+ yl=run_bq(0,4,3,yl)*tone_norm; yr=run_bq(1,4,3,yr)*tone_norm;
+ yl=run_bq(0,7,4,yl)*post_gain; yr=run_bq(1,7,4,yr)*post_gain;
+);
+bl=yl-dc_in_l+dc_pole*dc_out_l; dc_in_l=yl; dc_out_l=bl;
+br=yr-dc_in_r+dc_pole*dc_out_r; dc_in_r=yr; dc_out_r=br;
+dc_on ? (yl=bl; yr=br;);
+spl0=yl*output_gain; spl1=yr*output_gain;
+meter_out=max(max(abs(spl0),abs(spl1)),meter_out*meter_decay);
+
+@gfx 1536 1024
+gfx_clear=0; gfx_getchar();
+!images_loaded ? (
+ image_out=gfx_loadimg(0,"exciting_out.png");
+ image_in=gfx_loadimg(1,"exciting_in.png");
+ images_loaded=1;
+);
+sc=min(gfx_w/1536,gfx_h/1024);
+ox=(gfx_w-1536*sc)/2; oy=(gfx_h-1024*sc)/2;
+ux=(mouse_x-ox)/max(sc,0.0001); uy=(mouse_y-oy)/max(sc,0.0001);
+left_down=(mouse_cap&1)!=0; pressed=left_down && !previous_left;
+// Latched toggle: switch on the down edge, not on release.
+pressed && hit(628,766,280,132) ? (advanced=1-advanced; drag_id=0;);
+!left_down && previous_left && drag_id>0 ? (
+ slider_automate(2^(drag_id-1),1); sliderchange(-1); drag_id=0;
+);
+selected_image=advanced && image_in>=0 ? 1 : 0;
+gfx_set(1,1,1,1); gfx_mode=0;
+(image_out>=0 || (advanced && image_in>=0)) ? (
+ gfx_getimgdim(selected_image,iw,ih);
+ gfx_blit(selected_image,1,0,0,0,iw,ih,ox,oy,1536*sc,1024*sc);
+) : (
+ gfx_set(0.16,0.17,0.18,1); gfx_rect(ox,oy,1536*sc,1024*sc);
+ gfx_setfont(1,"Arial",max(12,42*sc)); gfx_set(0.9,0.9,0.9,1);
+ gfx_x=ox+350*sc; gfx_y=oy+180*sc; gfx_drawstr("THE EXCITING COMPRESSOR");
+ gfx_setfont(1,"Arial",max(10,22*sc)); gfx_x=ox+360*sc; gfx_y=oy+250*sc;
+ gfx_drawstr("Place exciting_out.png and exciting_in.png beside the JSFX.");
+);
+// Approximate opening coordinates from the supplied 1536 x 1024 artwork.
+// Keep a solid black interior, then draw the red segments over it.
+mx=330; my=427; mw=874; mh=69;
+gfx_set(0,0,0,1); gfx_rect(ox+mx*sc,oy+my*sc,mw*sc,mh*sc);
+segments=60; level=min(30,max(0,gr)); k=0;
+loop(segments,
+ fill=min(1,max(0,level*2-k));
+ fill>0 ? (
+  gfx_set(0.9,0.015,0.008,0.25+0.75*fill);
+  gfx_rect(ox+(mx+k*mw/segments+2)*sc,oy+(my+9)*sc,(mw/segments-4)*sc,(mh-18)*sc);
+ );
+ k+=1;
+);
+// If an image is missing, still provide a working toggle button.
+(image_out<0 || image_in<0) ? (
+ gfx_set(advanced ? 0.35 : 0.12,0.08,0.06,1);
+ gfx_rect(ox+642*sc,oy+782*sc,252*sc,98*sc);
+ gfx_setfont(1,"Arial",max(10,26*sc)); gfx_set(1,1,1,1);
+ gfx_x=ox+662*sc; gfx_y=oy+815*sc; gfx_drawstr("ADVANCED");
+);
+advanced ? (
+ gfx_setfont(1,"Arial",max(9,18*sc));
+ // Six rows on each side, keeping the center button uncovered.
+ control(1,60,620,470,-24,24,0.1,"Input trim dB");
+ control(2,60,680,470,-24,24,0.1,"Threshold offset dB");
+ control(3,60,740,470,-12,12,0.1,"Stage extra gain dB");
+ control(4,60,800,470,-36,24,0.1,"Output trim dB");
+ control(5,60,860,470,0,1,1,"Compressor");
+ control(6,60,920,470,0,1,1,"Saturation");
+ control(7,1006,620,470,0,1,1,"EQ stages");
+ control(8,1006,680,470,0,1,1,"DC block");
+ control(9,1006,740,470,0,100,1,"Peak Reduction");
+ control(10,1006,800,470,0,24,0.1,"Makeup gain dB");
+ control(11,1006,860,470,0,30,0.1,"Saturation drive dB");
+ control(12,1006,920,470,0,100,1,"Saturation mix %");
+ gfx_set(0.02,0.02,0.02,0.94); gfx_rect(ox+540*sc,oy+625*sc,456*sc,117*sc);
+ gfx_set(0.95,0.95,0.95,1); gfx_x=ox+553*sc; gfx_y=oy+637*sc;
+ gfx_drawstr("Input: "); gfx_drawnumber(to_db(meter_in),1); gfx_drawstr("   Output: "); gfx_drawnumber(to_db(meter_out),1);
+ gfx_x=ox+553*sc; gfx_y=oy+670*sc;
+ gfx_drawstr("Detector: "); gfx_drawnumber(detector_db,1); gfx_drawstr("   Thr: "); gfx_drawnumber(threshold_db,1);
+ gfx_x=ox+553*sc; gfx_y=oy+703*sc;
+ gfx_drawstr("Gain reduction: "); gfx_drawnumber(gr,1); gfx_drawstr(" dB");
+);
+previous_left=left_down;

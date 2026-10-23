@@ -1,0 +1,49 @@
+THE EXCITING COMPRESSOR - SKINNED
+
+INSTALL
+1. In REAPER choose Options > Show REAPER resource path.
+2. Open Effects, create a folder named Exciting Compressor, and put the JSFX there.
+3. Put your raised-button image in that same folder, named exciting_out.png.
+4. Put your pressed-button image there, named exciting_in.png.
+5. Both images should be real PNG files, 1536 x 1024, with identical alignment.
+6. Refresh the FX browser and add The Exciting Compressor - Skinned.
+7. If you add images after opening the effect, remove/reinsert or recompile the effect to reload them.
+
+Images are NOT included: both final artwork states were not available when this was built.
+The plugin has a fallback UI and remains usable without them.
+
+BUTTON
+ADVANCED toggles on mouse press and stays latched. Click it again to return.
+The entire background image switches states immediately on press.
+Advanced controls appear around the button, not over it.
+
+CONTROLS
+Click or drag along a control's horizontal track to change its value.
+Click an On/Off control to toggle it. Changes notify host automation.
+The ordinary REAPER slider panel is hidden; parameters remain automatable.
+
+METER
+Red segments display 0-30 dB actual gain reduction; no lit segments at zero.
+Interior design coordinates: x=330, y=427, width=874, height=69.
+Button hit region: x=628, y=766, width=280, height=132.
+Adjust these constants in @gfx if your final artwork has moved.
+Use an opaque black meter opening; transparency is not needed.
+The code paints a black rectangle under the segments.
+
+SIZE
+@gfx requests a 1536 x 1024 graphics area, excluding host window chrome.
+REAPER/OS window constraints may prevent displaying the full size.
+Graphics and click regions scale proportionally if resized.
+
+DEFAULTS
+Input/threshold/stage extra gain: 0 dB. Output: +10.5 dB.
+All four switches: On. Peak Reduction: 55. Makeup: 0 dB.
+Saturation drive: 12 dB. Saturation mix: 35%.
+
+STATUS
+Requires REAPER 6.74+ for automation end-touch support.
+Not compiled or audio-tested in REAPER by the author of this generated file.
+Retains the preceding approximate DSP; not a calibrated LA-2A/LALA emulation.
+No oversampling, output limiter, or automatic loudness matching.
+An input below the detector threshold can still produce zero gain reduction.
+
